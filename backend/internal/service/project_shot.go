@@ -11,11 +11,90 @@ import (
 type CreateProjectShotRequest struct {
 	ID          string `json:"id"`
 	UnitID      string `json:"unitId"`
+	SceneID     string `json:"sceneId"`
 	Title       string `json:"title"`
 	Description string `json:"description"`
 	Position    int    `json:"position"`
 	DurationMs  int64  `json:"durationMs"`
 	Status      string `json:"status"`
+}
+
+type SaveProjectSceneRequest struct {
+	ID          string `json:"id"`
+	UnitID      string `json:"unitId"`
+	Code        string `json:"code"`
+	Title       string `json:"title"`
+	Description string `json:"description"`
+	Position    int    `json:"position"`
+	Status      string `json:"status"`
+}
+
+func (s *Service) SaveProjectScene(userID string, projectID string, req SaveProjectSceneRequest) (model.Scene, error) {
+	if _, err := s.repo.ProjectForUser(userID, projectID); err != nil {
+		return model.Scene{}, err
+	}
+
+	unitID := strings.TrimSpace(req.UnitID)
+	if unitID != "" {
+		if _, err := s.repo.ProjectUnit(projectID, unitID); err != nil {
+			return model.Scene{}, err
+		}
+	}
+
+	title := strings.TrimSpace(req.Title)
+	if title == "" {
+		return model.Scene{}, BadAuthRequest("场景标题不能为空")
+	}
+	if req.Position < 0 {
+		return model.Scene{}, BadAuthRequest("场景顺序不能为负数")
+	}
+
+	sceneID := strings.TrimSpace(req.ID)
+	create := sceneID == ""
+	now := time.Now()
+	status := strings.TrimSpace(req.Status)
+	if create {
+		sceneID = newID()
+		if status == "" {
+			status = "draft"
+		}
+	} else {
+		existing, err := s.repo.SceneForProject(projectID, sceneID)
+		if err != nil {
+			return model.Scene{}, err
+		}
+		if status == "" {
+			status = existing.Status
+		}
+		if unitID == "" {
+			unitID = existing.UnitID
+		}
+		now = existing.CreatedAt
+	}
+
+	if status != "draft" && status != "ready" && status != "completed" {
+		return model.Scene{}, BadAuthRequest("不支持的场景状态")
+	}
+
+	scene := model.Scene{
+		ID:          sceneID,
+		ProjectID:   projectID,
+		UnitID:      unitID,
+		Code:        strings.TrimSpace(req.Code),
+		Title:       title,
+		Description: strings.TrimSpace(req.Description),
+		Position:    req.Position,
+		Status:      status,
+		CreatedAt:   now,
+		UpdatedAt:   time.Now(),
+	}
+	if err := s.repo.SaveScene(&scene, create); err != nil {
+		return model.Scene{}, err
+	}
+	if err := s.repo.BumpProjectRevision(projectID); err != nil {
+		return model.Scene{}, err
+	}
+	return scene, nil
 }
 
 type ReplaceProjectUnitShotsRequest struct {
@@ -49,6 +128,16 @@ func (s *Service) CreateProjectShot(userID string, projectID string, req CreateP
 			return model.Shot{}, err
 		}
 	}
+	sceneID := strings.TrimSpace(req.SceneID)
+	if sceneID != "" {
+		scene, err := s.repo.SceneForProject(projectID, sceneID)
+		if err != nil {
+			return model.Shot{}, err
+		}
+		if unitID != "" && scene.UnitID != "" && scene.UnitID != unitID {
+			return model.Shot{}, BadAuthRequest("镜头章节与场景不一致")
+		}
+	}
 	title := strings.TrimSpace(req.Title)
 	if title == "" {
 		return model.Shot{}, BadAuthRequest("镜头标题不能为空")
@@ -73,12 +162,15 @@ func (s *Service) CreateProjectShot(userID string, projectID string, req CreateP
 		if status == "" {
 			status = existing.Status
 		}
+		if sceneID == "" {
+			sceneID = existing.SceneID
+		}
 		now = existing.CreatedAt
 	}
 	if !validShotStatus(status) {
 		return model.Shot{}, BadAuthRequest("不支持的镜头状态")
 	}
-	shot := model.Shot{ID: shotID, ProjectID: projectID, UnitID: unitID, Title: title, Description: strings.TrimSpace(req.Description), Position: req.Position, DurationMs: req.DurationMs, Status: status, CreatedAt: now, UpdatedAt: time.Now()}
+	shot := model.Shot{ID: shotID, ProjectID: projectID, UnitID: unitID, SceneID: sceneID, Title: title, Description: strings.TrimSpace(req.Description), Position: req.Position, DurationMs: req.DurationMs, Status: status, CreatedAt: now, UpdatedAt: time.Now()}
 	if err := s.repo.SaveShot(&shot, create); err != nil {
 		return model.Shot{}, err
 	}

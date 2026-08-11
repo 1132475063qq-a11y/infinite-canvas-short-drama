@@ -74,6 +74,7 @@ type ProjectDetail struct {
 	CanvasUnitLinks []model.CanvasUnitLink        `json:"canvasUnitLinks"`
 	Assets          []ProjectAssetSummary         `json:"assets"`
 	Workflows       []ProjectWorkflowDetail       `json:"workflows"`
+	Scenes          []model.Scene                 `json:"scenes"`
 	Shots           []model.Shot                  `json:"shots"`
 	ShotReferences  []model.ShotAssetReference    `json:"shotReferences"`
 	AssetCandidates []model.ProjectAssetCandidate `json:"assetCandidates"`
@@ -142,6 +143,10 @@ func (s *Service) ProjectDetail(userID string, id string) (ProjectDetail, error)
 	if err != nil {
 		return ProjectDetail{}, err
 	}
+	scenes, err := s.repo.ProjectScenes(project.ID)
+	if err != nil {
+		return ProjectDetail{}, err
+	}
 	shots, err := s.repo.ProjectShots(project.ID)
 	if err != nil {
 		return ProjectDetail{}, err
@@ -154,7 +159,7 @@ func (s *Service) ProjectDetail(userID string, id string) (ProjectDetail, error)
 	if err != nil {
 		return ProjectDetail{}, err
 	}
-	return ProjectDetail{Project: *project, Units: units, Canvases: canvases, CanvasUnitLinks: canvasUnitLinks, Assets: assets, Workflows: workflows, Shots: shots, ShotReferences: shotReferences, AssetCandidates: candidates}, nil
+	return ProjectDetail{Project: *project, Units: units, Canvases: canvases, CanvasUnitLinks: canvasUnitLinks, Assets: assets, Workflows: workflows, Scenes: scenes, Shots: shots, ShotReferences: shotReferences, AssetCandidates: candidates}, nil
 }
 
 func (s *Service) CreateProject(userID string, req CreateProjectRequest) (model.Project, error) {

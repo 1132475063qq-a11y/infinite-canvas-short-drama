@@ -6,6 +6,7 @@ import { isFrameNode } from "@/lib/canvas/canvas-frame";
 import { nodeSizeFromRatio } from "@/lib/canvas/canvas-node-size";
 import type { CanvasResourceReference } from "@/lib/canvas/canvas-resource-references";
 import { scopedLocalStorage } from "@/lib/user-scope";
+import { createFilmNodeState, type FilmNodeDomainRef, type FilmNodeKind } from "@/film/domain/types";
 import type { GenerationTask } from "@/services/api/task-center";
 import { CanvasNodeType, type CanvasConnection, type CanvasNodeData, type CanvasNodeMetadata, type CanvasWorkspaceMode, type ConnectionHandle, type Position, type StoryboardColumn, type StoryboardRow } from "@/types/canvas";
 
@@ -47,6 +48,17 @@ export function createCanvasNode(type: CanvasNodeType, position: Position, metad
         metadata: type === CanvasNodeType.Script
             ? { ...spec.metadata, ...metadata, storyboard: metadata?.storyboard || { rows: [1, 2, 3].map((shotNumber) => createStoryboardRow(shotNumber)), visibleColumns: ["shotNumber", "durationSeconds", "plotDescription", "dialogue"], referenceNodeIds: [] } }
             : { ...spec.metadata, ...metadata, ...(type === CanvasNodeType.Drawing ? { drawingId: metadata?.drawingId || `${id}-document` } : {}) },
+    };
+}
+
+export function createFilmCanvasNode(type: CanvasNodeType, filmKind: FilmNodeKind, position: Position, domainRef: FilmNodeDomainRef, metadata?: CanvasNodeMetadata): CanvasNodeData {
+    const node = createCanvasNode(type, position, metadata);
+    return {
+        ...node,
+        filmKind,
+        domainRef,
+        filmState: createFilmNodeState({ evidence: "recorded" }),
+        layout: { mode: "manual" },
     };
 }
 

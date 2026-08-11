@@ -1,7 +1,7 @@
-import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
+import { useDeferredValue, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { ArrowUpRight, BookOpenText, ChevronLeft, ChevronRight, Crosshair, FolderKanban, GripVertical, Images, LocateFixed, LoaderCircle, Palette, Plus, Search, Settings2, X } from "lucide-react";
+import { ArrowUpRight, BookOpenText, ChevronLeft, ChevronRight, Crosshair, FolderKanban, GripVertical, Images, LocateFixed, LoaderCircle, Palette, Plus, Search, Settings2, UserRound, X } from "lucide-react";
 import { Link } from "react-router";
 
 import { resolveProjectCanvasStyle } from "@/components/canvas/canvas-style-picker-modal";
@@ -18,9 +18,10 @@ type CanvasProjectSidebarProps = {
     onAddChapter: (chapter: CanvasProjectChapterPayload) => void | Promise<void>;
     onLocateStyle: () => void;
     onOpenAssets: () => void;
+    onAddScene?: () => void;
 };
 
-export function CanvasProjectSidebar({ projectId, detail, onAddChapter, onLocateStyle, onOpenAssets }: CanvasProjectSidebarProps) {
+export function CanvasProjectSidebar({ projectId, detail, onAddChapter, onLocateStyle, onOpenAssets, onAddScene }: CanvasProjectSidebarProps) {
     const [collapsed, setCollapsed] = useState(false);
     const [query, setQuery] = useState("");
     const [selectedId, setSelectedId] = useState("");
@@ -32,6 +33,10 @@ export function CanvasProjectSidebar({ projectId, detail, onAddChapter, onLocate
     const projectDetail = detail || projectQuery.data;
     const style = resolveProjectCanvasStyle(projectDetail?.project.stylePresetId, projectDetail?.project.styleProfileJson);
     const mediaAssetCount = projectDetail?.assets.filter((asset) => asset.mediaType === "image" || asset.mediaType === "video").length || 0;
+    const sceneCount = projectDetail?.scenes.length || 0;
+    const characterCount = projectDetail?.assets.filter((asset) => asset.category === "character").length || 0;
+    const locationCount = projectDetail?.assets.filter((asset) => asset.category === "environment").length || 0;
+    const propCount = projectDetail?.assets.filter((asset) => asset.category === "prop").length || 0;
     const orderedUnits = useMemo(() => projectDetail?.units.slice().sort((left, right) => left.position - right.position) || [], [projectDetail?.units]);
     const visibleUnits = useMemo(() => {
         if (!deferredQuery) return orderedUnits.map((unit, index) => ({ unit, index }));
@@ -157,6 +162,18 @@ export function CanvasProjectSidebar({ projectId, detail, onAddChapter, onLocate
                 </button>
             </section>
 
+            <section className="shrink-0 border-b border-border/70 px-2 py-2">
+                <div className="mb-1 flex h-5 items-center px-1 text-[var(--fs-label)] font-medium text-foreground/48">影视生产</div>
+                <div className="grid grid-cols-2 gap-1">
+                    <FilmNavigationItem icon={<BookOpenText className="size-3.5" />} label="剧本" count={orderedUnits.length} />
+                    <FilmNavigationItem icon={<Crosshair className="size-3.5" />} label="场景" count={sceneCount} onClick={onAddScene} actionLabel="新建场景" />
+                    <FilmNavigationItem icon={<UserRound className="size-3.5" />} label="角色" count={characterCount} onClick={onOpenAssets} actionLabel="打开资产" />
+                    <FilmNavigationItem icon={<Images className="size-3.5" />} label="场地" count={locationCount} onClick={onOpenAssets} actionLabel="打开资产" />
+                    <FilmNavigationItem icon={<Images className="size-3.5" />} label="道具" count={propCount} onClick={onOpenAssets} actionLabel="打开资产" />
+                    <FilmNavigationItem icon={<Crosshair className="size-3.5" />} label="任务" count={projectDetail?.workflows.length || 0} />
+                </div>
+            </section>
+
             <section className="flex min-h-0 flex-1 flex-col">
                 <div className="flex h-9 shrink-0 items-center justify-between px-3">
                     <span className="flex items-center gap-1.5 text-[var(--fs-label)] font-medium text-foreground/48">
@@ -263,6 +280,12 @@ export function CanvasProjectSidebar({ projectId, detail, onAddChapter, onLocate
             ) : null}
         </aside>
     );
+}
+
+function FilmNavigationItem({ icon, label, count, onClick, actionLabel }: { icon: ReactNode; label: string; count: number; onClick?: () => void; actionLabel?: string }) {
+    const content = <><span className="flex items-center gap-1.5 truncate">{icon}{label}</span><span className="tabular-nums text-foreground/35">{count}</span></>;
+    if (!onClick) return <div className="flex h-7 items-center justify-between rounded px-1.5 text-[var(--fs-label)] text-foreground/58">{content}</div>;
+    return <button type="button" className="flex h-7 items-center justify-between rounded px-1.5 text-[var(--fs-label)] text-foreground/58 hover:bg-foreground/[.06] hover:text-foreground" title={actionLabel} onClick={onClick}>{content}</button>;
 }
 
 function ChapterPreview({

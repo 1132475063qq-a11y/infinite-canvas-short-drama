@@ -4,17 +4,17 @@ import { persist, type PersistStorage, type StorageValue } from "zustand/middlew
 import { nanoid } from "nanoid";
 import { localForageStorage } from "@/lib/localforage-storage";
 import type { CanvasBackgroundMode } from "@/lib/canvas-theme";
-import type { CanvasAssistantSession, CanvasConnection, CanvasNodeData, ViewportTransform } from "@/types/canvas";
+import { migrateCanvasProjectDocument } from "@/film/domain/document-migration";
+import type { CanvasAssistantSession, CanvasConnection, CanvasNodeData, CanvasProjectDocument, ViewportTransform } from "@/types/canvas";
 import type { DirectorScene } from "@/types/director";
 import type { TimelineProject } from "@/types/timeline";
 
-export type CanvasProject = {
+export type CanvasProject = CanvasProjectDocument & {
     id: string;
     projectId?: string;
     title: string;
     createdAt: string;
     updatedAt: string;
-    nodes: CanvasNodeData[];
     connections: CanvasConnection[];
     chatSessions: CanvasAssistantSession[];
     activeChatId: string | null;
@@ -34,7 +34,7 @@ type CanvasStore = {
     renameProject: (id: string, title: string) => void;
     deleteProjects: (ids: string[]) => void;
     replaceProjects: (projects: CanvasProject[]) => void;
-    updateProject: (id: string, patch: Partial<Pick<CanvasProject, "projectId" | "nodes" | "connections" | "chatSessions" | "activeChatId" | "backgroundMode" | "showImageInfo" | "viewport" | "directorScenes" | "timeline">>) => void;
+    updateProject: (id: string, patch: Partial<Pick<CanvasProject, "projectId" | "schemaVersion" | "layout" | "nodes" | "connections" | "chatSessions" | "activeChatId" | "backgroundMode" | "showImageInfo" | "viewport" | "directorScenes" | "timeline">>) => void;
 };
 
 const initialViewport: ViewportTransform = { x: 0, y: 0, k: 1 };
@@ -90,6 +90,8 @@ export const useCanvasStore = create<CanvasStore>()(
                 const id = nanoid();
                 const project: CanvasProject = {
                     id,
+                    schemaVersion: 2,
+                    layout: { gridSize: 8 },
                     projectId,
                     title,
                     createdAt: now,
@@ -110,6 +112,8 @@ export const useCanvasStore = create<CanvasStore>()(
                 const now = new Date().toISOString();
                 const project: CanvasProject = {
                     id: nanoid(),
+                    schemaVersion: 2,
+                    layout: source.layout || { gridSize: 8 },
                     projectId: source.projectId,
                     title: source.title || "导入画布",
                     createdAt: source.createdAt || now,
@@ -138,7 +142,7 @@ export const useCanvasStore = create<CanvasStore>()(
                     const projects = state.projects.filter((project) => !ids.includes(project.id));
                     return { projects };
                 }),
-            replaceProjects: (projects) => set({ projects }),
+            replaceProjects: (projects) => set({ projects: projects.map((project) => migrateCanvasProjectDocument(project)) }),
             updateProject: (id, patch) =>
                 set((state) => ({
                     projects: state.projects.map((project) => (project.id === id ? { ...project, ...patch, updatedAt: new Date().toISOString() } : project)),
@@ -151,7 +155,8 @@ export const useCanvasStore = create<CanvasStore>()(
                 ({
                     projects: state.projects,
                 }) as StorageValue<CanvasStore>["state"],
-            onRehydrateStorage: () => () => {
+            onRehydrateStorage: () => (state) => {
+                if (state?.projects) state.replaceProjects(state.projects);
                 useCanvasStore.setState({ hydrated: true });
             },
         },

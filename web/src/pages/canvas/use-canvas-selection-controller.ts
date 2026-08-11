@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState, type Dispatch, type MouseEven
 import { applyCanvasSelectionPreview } from "@/lib/canvas/canvas-live-viewport";
 import { calculateNodeAlignment, createNodeAlignmentContext, isHiddenBatchChild, sameStringSet, type NodeAlignmentContext } from "@/lib/canvas/canvas-project-domain";
 import { applyFrameDrop, findFrameDropTarget, getFrameChildIds, isFrameNode, isNodeHiddenByCollapsedFrame } from "@/lib/canvas/canvas-frame";
+import { snapCanvasPosition } from "@/lib/canvas/layout/snap-engine";
 import type { CanvasNodeData, Position, SelectionBox, ViewportTransform } from "@/types/canvas";
 
 type UseCanvasSelectionControllerOptions = {
@@ -205,7 +206,11 @@ export function useCanvasSelectionController({
             setNodes((currentNodes) => {
                 const positioned = clientX == null || clientY == null ? currentNodes : currentNodes.map((node) => {
                     const initial = initialById.get(node.id);
-                    return initial ? { ...node, position: { x: initial.x + dx, y: initial.y + dy } } : node;
+                    return initial ? {
+                        ...node,
+                        position: snapCanvasPosition({ x: initial.x + dx, y: initial.y + dy }),
+                        layout: node.filmKind ? { ...node.layout, mode: "manual" } : node.layout,
+                    } : node;
                 });
                 return applyFrameDrop(positioned, draggedNodeIds, findFrameDropTarget(positioned, draggedNodeIds));
             });

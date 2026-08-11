@@ -162,10 +162,25 @@ type CanvasUnitLink struct {
 	CreatedAt time.Time `json:"createdAt"`
 }
 
+// Scene 是影视生产语义中的场次事实；Canvas 节点仅通过 SceneID 投影它。
+type Scene struct {
+	ID          string    `json:"id" gorm:"primaryKey;size:36"`
+	ProjectID   string    `json:"projectId" gorm:"index;size:36"`
+	UnitID      string    `json:"unitId,omitempty" gorm:"index;size:36"`
+	Code        string    `json:"code" gorm:"size:64"`
+	Title       string    `json:"title" gorm:"size:240"`
+	Description string    `json:"description" gorm:"type:text"`
+	Position    int       `json:"position"`
+	Status      string    `json:"status" gorm:"index;size:24"`
+	CreatedAt   time.Time `json:"createdAt"`
+	UpdatedAt   time.Time `json:"updatedAt"`
+}
+
 type Shot struct {
 	ID          string    `json:"id" gorm:"primaryKey;size:36"`
 	ProjectID   string    `json:"projectId" gorm:"index;size:36"`
 	UnitID      string    `json:"unitId" gorm:"index;size:36"`
+	SceneID     string    `json:"sceneId,omitempty" gorm:"index;size:36"`
 	Title       string    `json:"title" gorm:"size:240"`
 	Description string    `json:"description" gorm:"type:text"`
 	Position    int       `json:"position"`

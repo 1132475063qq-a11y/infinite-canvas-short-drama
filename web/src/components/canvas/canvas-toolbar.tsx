@@ -1,7 +1,7 @@
 import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useRef, useState, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
 import { Segmented, Switch } from "antd";
-import { CircleDot, Grid2x2, Moon, Palette, Sun, Square, Info } from "lucide-react";
+import { CircleDot, Clapperboard, Grid2x2, Moon, Palette, PersonStanding, Sun, Square, Info } from "lucide-react";
 
 import { AnimatedThemeToggler } from "@/components/ui/animated-theme-toggler";
 import { FloatingDock } from "@/components/ui/aceternity/floating-dock";
@@ -44,6 +44,9 @@ export function CanvasToolbar({
     onShowImageInfoChange,
     onOpenMyAssets,
     onOpenProjectCharacters,
+    onAddFilmScene,
+    onAddFilmShot,
+    onAddFilmCharacter,
 }: {
     selectedCount: number;
     workspaceMode: CanvasWorkspaceMode;
@@ -73,6 +76,9 @@ export function CanvasToolbar({
     onShowImageInfoChange: (show: boolean) => void;
     onOpenMyAssets: () => void;
     onOpenProjectCharacters: () => void;
+    onAddFilmScene?: () => void;
+    onAddFilmShot?: () => void;
+    onAddFilmCharacter?: () => void;
 }) {
     const rootRef = useRef<HTMLDivElement>(null);
     const dockRef = useRef<HTMLDivElement>(null);
@@ -174,7 +180,12 @@ export function CanvasToolbar({
         section: cmd.section,
         onClick: () => runAddAction(() => cmd.run(ctx)),
     });
-    const createCommands = addNodeCommands.map(toCommand);
+    const filmCommands: CanvasCreateCommand[] = [
+        onAddFilmScene ? { id: "film-scene", label: "影视场景", icon: <Clapperboard />, badge: "SC", section: "node", onClick: () => runAddAction(onAddFilmScene) } : null,
+        onAddFilmShot ? { id: "film-shot", label: "影视镜头", icon: <CircleDot />, badge: "SH", section: "node", onClick: () => runAddAction(onAddFilmShot) } : null,
+        onAddFilmCharacter ? { id: "film-character", label: "角色资产", icon: <PersonStanding />, badge: "CH", section: "node", onClick: () => runAddAction(onAddFilmCharacter) } : null,
+    ].filter((command): command is CanvasCreateCommand => command !== null);
+    const createCommands = [...filmCommands, ...addNodeCommands.map(toCommand)];
 
     return (
         <div ref={rootRef} data-canvas-no-zoom className="pointer-events-none absolute inset-x-[var(--canvas-inset-x)] bottom-[var(--canvas-inset-y)] z-[var(--z-toolbar)] flex justify-center">

@@ -112,10 +112,24 @@ export type ProjectShot = {
     id: string;
     projectId: string;
     unitId?: string;
+    sceneId?: string;
     title: string;
     description: string;
     position: number;
     durationMs: number;
+    status: string;
+    createdAt: string;
+    updatedAt: string;
+};
+
+export type ProjectScene = {
+    id: string;
+    projectId: string;
+    unitId?: string;
+    code: string;
+    title: string;
+    description: string;
+    position: number;
     status: string;
     createdAt: string;
     updatedAt: string;
@@ -161,6 +175,7 @@ export type ProjectDetail = {
     canvasUnitLinks: CanvasUnitLink[];
     assets: ProjectAsset[];
     workflows: ProjectWorkflow[];
+    scenes: ProjectScene[];
     shots: ProjectShot[];
     shotReferences: ShotAssetReference[];
     assetCandidates: ProjectAssetCandidate[];
@@ -271,8 +286,12 @@ export function createUnitWorkflow(projectId: string, unitId: string) {
     return request<{ workflow: ProjectWorkflow }>(api.post(`/projects/${encodeURIComponent(projectId)}/workflows`, { unitId }));
 }
 
-export function saveProjectShot(projectId: string, input: { id?: string; unitId?: string; title: string; description?: string; position?: number; durationMs?: number; status?: string }) {
+export function saveProjectShot(projectId: string, input: { id?: string; unitId?: string; sceneId?: string; title: string; description?: string; position?: number; durationMs?: number; status?: string }) {
     return request<{ shot: ProjectShot }>(api.post(`/projects/${encodeURIComponent(projectId)}/shots`, input));
+}
+
+export function saveProjectScene(projectId: string, input: { id?: string; unitId?: string; code?: string; title: string; description?: string; position?: number; status?: string }) {
+    return request<{ scene: ProjectScene }>(api.post(`/projects/${encodeURIComponent(projectId)}/scenes`, input));
 }
 
 export function replaceProjectUnitShots(projectId: string, unitId: string, shots: Array<{ title: string; description: string; durationMs: number }>) {

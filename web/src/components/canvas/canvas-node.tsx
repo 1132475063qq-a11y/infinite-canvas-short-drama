@@ -508,7 +508,8 @@ export const CanvasNode = React.memo(function CanvasNode({
 });
 
 function NodeContent(props: NodeContentRendererProps) {
-    const hasCustomContent = props.node.type === CanvasNodeType.Config
+    const hasCustomContent = Boolean(props.node.filmKind)
+        || props.node.type === CanvasNodeType.Config
         || props.node.type === CanvasNodeType.Script
         || Boolean(props.node.metadata?.directorSceneId)
         || (props.node.metadata?.workflowKind === "character" && Boolean(props.node.metadata.characterAssetId))

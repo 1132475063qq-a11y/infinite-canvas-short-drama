@@ -5,6 +5,7 @@ import { nanoid } from "nanoid";
 
 import { FRAME_HEADER_HEIGHT, getFrameChildIds, getFrameChildren, isFrameNode } from "@/lib/canvas/canvas-frame";
 import { alignCanvasNodes, layoutCanvasFlow, layoutCanvasNodes, nextCanvasVersionLabel, type CanvasAlignmentMode } from "@/lib/canvas/canvas-layout";
+import { snapCanvasPosition } from "@/lib/canvas/layout/snap-engine";
 import { createCanvasNode, removeCanvasNodes } from "@/lib/canvas/canvas-project-domain";
 import { isolateCopiedNodeMetadata } from "@/lib/canvas/canvas-node-copy";
 import { CanvasNodeType, type CanvasConnection, type CanvasNodeData, type ContextMenuState, type Position } from "@/types/canvas";
@@ -136,7 +137,7 @@ export function useCanvasNodeOperations({
         const selected = nodesRef.current.filter((node) => selectedNodeIdsRef.current.has(node.id) && !node.metadata?.locked && !isFrameNode(node));
         if (selected.length < 2) return;
         const positions = mode === "flow" ? layoutCanvasFlow(selected, connectionsRef.current) : layoutCanvasNodes(selected, mode);
-        commitNodes(nodesRef.current.map((node) => positions.has(node.id) ? { ...node, position: positions.get(node.id)! } : node));
+        commitNodes(nodesRef.current.map((node) => positions.has(node.id) ? { ...node, position: snapCanvasPosition(positions.get(node.id)!) } : node));
         message.success(mode === "flow" ? "已按连线整理" : "已整理选中节点");
     }, [commitNodes, connectionsRef, message, nodesRef, selectedNodeIdsRef]);
 
@@ -144,7 +145,7 @@ export function useCanvasNodeOperations({
         const selected = nodesRef.current.filter((node) => selectedNodeIdsRef.current.has(node.id) && !node.metadata?.locked && !isFrameNode(node));
         if (selected.length < 2 || ((mode === "distributeX" || mode === "distributeY") && selected.length < 3)) return;
         const positions = alignCanvasNodes(selected, mode);
-        commitNodes(nodesRef.current.map((node) => positions.has(node.id) ? { ...node, position: positions.get(node.id)! } : node));
+        commitNodes(nodesRef.current.map((node) => positions.has(node.id) ? { ...node, position: snapCanvasPosition(positions.get(node.id)!) } : node));
         message.success(mode === "distributeX" || mode === "distributeY" ? "已等距分布选中节点" : "已对齐选中节点");
     }, [commitNodes, message, nodesRef, selectedNodeIdsRef]);
 
