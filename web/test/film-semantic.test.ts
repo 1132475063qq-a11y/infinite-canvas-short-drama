@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
 import { migrateCanvasProjectDocument } from "../src/film/domain/document-migration";
+import { formatFilmSceneTitle, hasFilmSceneProjection, normalizeFilmSceneTitle } from "../src/film/domain/scene-projection";
 import { applyFilmAutoLayout } from "../src/lib/canvas/layout/layout-engine";
 import { snapCanvasPosition } from "../src/lib/canvas/layout/snap-engine";
 import { CanvasNodeType, type CanvasNodeData } from "../src/types/canvas";
@@ -51,6 +52,19 @@ describe("Film Semantic migration", () => {
 });
 
 describe("Film layout", () => {
+    test("镜头进入新画布时识别缺失的场景投影，并兼容旧场景标题", () => {
+        const scene = {
+            ...filmNode("scene-01", "scene"),
+            domainRef: { projectId: "project-01", sceneId: "scene-01" },
+        };
+
+        expect(hasFilmSceneProjection([scene], "scene-01")).toBe(true);
+        expect(hasFilmSceneProjection([], "scene-01")).toBe(false);
+        expect(formatFilmSceneTitle("SC01", "SC01 未命名场景")).toBe("SC01 · 未命名场景");
+        expect(formatFilmSceneTitle("SC02", "诊所外景")).toBe("SC02 · 诊所外景");
+        expect(normalizeFilmSceneTitle("SC01 · SC01 未命名场景")).toBe("SC01 · 未命名场景");
+    });
+
     test("自动布局按场次建立纵向 lane，并将镜头放入对应场次", () => {
         const sceneOne = {
             ...filmNode("scene-01", "scene", { x: 13, y: 21 }),

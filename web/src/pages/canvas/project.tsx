@@ -25,6 +25,7 @@ import { CanvasAssetTray } from "@/components/canvas/canvas-asset-tray";
 import { CanvasProjectSidebar } from "@/components/canvas/canvas-project-sidebar";
 import { FilmInspector } from "@/film/inspector/film-inspector";
 import { FilmNodeCard } from "@/film/nodes/film-node-card";
+import { formatFilmSceneTitle, hasFilmSceneProjection } from "@/film/domain/scene-projection";
 import { CanvasProjectAssetModal } from "@/components/canvas/canvas-project-asset-modal";
 import { CanvasCharacterReferenceNodeContent } from "@/components/canvas/canvas-character-reference-node";
 import { CanvasCharacterReferenceModal } from "@/components/canvas/canvas-character-reference-modal";
@@ -755,7 +756,7 @@ function InfiniteCanvasPage() {
                     const code = `SC${String(sceneNumber).padStart(2, "0")}`;
                     const response = await saveProjectScene(linkedProjectId, {
                         code,
-                        title: `${code} 未命名场景`,
+                        title: "未命名场景",
                         position: sceneNumber - 1,
                     });
                     scene = response.scene;
@@ -772,7 +773,7 @@ function InfiniteCanvasPage() {
                             },
                             { workflowKind: "scene", workflowTitle: scene.code || "场景" },
                         );
-                        node.title = scene.code ? `${scene.code} · ${scene.title}` : scene.title;
+                        node.title = formatFilmSceneTitle(scene.code, scene.title);
                         node.width = 420;
                         node.height = 240;
                         node.position = { x: nextPosition.x - node.width / 2, y: nextPosition.y - node.height / 2 };
@@ -808,7 +809,29 @@ function InfiniteCanvasPage() {
                 node.width = 320;
                 node.height = 180;
                 node.layout = { mode: "auto", lane: "shot", order: response.shot.position };
-                setNodes((current) => applyFilmAutoLayout([...current, node]));
+                setNodes((current) => {
+                    // A scene can be created from another project canvas. Mirror its
+                    // production record into this canvas before adding the shot so
+                    // the Scene Lane remains a complete, usable projection.
+                    if (hasFilmSceneProjection(current, scene.id)) return applyFilmAutoLayout([...current, node]);
+
+                    const sceneNode = createFilmCanvasNode(
+                        CanvasNodeType.Frame,
+                        "scene",
+                        nextPosition,
+                        {
+                            projectId: linkedProjectId,
+                            sceneId: scene.id,
+                        },
+                        { workflowKind: "scene", workflowTitle: scene.code || "场景" },
+                    );
+                    sceneNode.title = formatFilmSceneTitle(scene.code, scene.title);
+                    sceneNode.width = 420;
+                    sceneNode.height = 240;
+                    sceneNode.position = { x: nextPosition.x - sceneNode.width / 2, y: nextPosition.y - sceneNode.height / 2 };
+                    sceneNode.layout = { mode: "auto", lane: "scene", order: scene.position };
+                    return applyFilmAutoLayout([...current, sceneNode, node]);
+                });
                 setSelectedNodeIds(new Set([node.id]));
                 void refetchLinkedProject();
             } catch {

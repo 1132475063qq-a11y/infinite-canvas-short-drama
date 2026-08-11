@@ -1,4 +1,5 @@
 import { createFilmNodeState, isFilmNodeKind, type FilmNodeKind } from "@/film/domain/types";
+import { normalizeFilmSceneTitle } from "@/film/domain/scene-projection";
 import type { CanvasNodeData, CanvasProjectDocument } from "@/types/canvas";
 
 const LEGACY_WORKFLOW_KIND_MAP: Record<string, FilmNodeKind> = {
@@ -27,6 +28,7 @@ export function migrateCanvasNode(node: CanvasNodeData): CanvasNodeData {
     if (!filmKind) return node;
     return {
         ...node,
+        title: filmKind === "scene" ? normalizeFilmSceneTitle(node.title) : node.title,
         filmKind,
         filmState: createFilmNodeState(node.filmState),
         layout: node.layout || { mode: node.metadata?.locked ? "pinned" : "manual" },
