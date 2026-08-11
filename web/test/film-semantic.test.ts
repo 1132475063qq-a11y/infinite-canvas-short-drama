@@ -4,7 +4,8 @@ import { migrateCanvasProjectDocument } from "../src/film/domain/document-migrat
 import { describeFilmConnection } from "../src/film/domain/edge-contract";
 import { moveFilmNodeProjection } from "../src/film/domain/node-positioning";
 import { formatFilmSceneTitle, hasFilmSceneProjection, normalizeFilmSceneTitle } from "../src/film/domain/scene-projection";
-import { applyFilmAutoLayout } from "../src/lib/canvas/layout/layout-engine";
+import { applyFilmAutoLayout, applyFilmResultLayout } from "../src/lib/canvas/layout/layout-engine";
+import { canvasNodeRect, canvasRectsOverlap } from "../src/lib/canvas/layout/collision";
 import { reconcileFilmSceneProjections } from "../src/lib/canvas/layout/film-scene-projection";
 import { snapCanvasPosition } from "../src/lib/canvas/layout/snap-engine";
 import { CanvasNodeType, type CanvasNodeData } from "../src/types/canvas";
@@ -92,7 +93,7 @@ describe("Film layout", () => {
         const positioned = applyFilmAutoLayout([sceneOne, sceneTwo, shot, manuallyPlaced]);
 
         expect(positioned.find((node) => node.id === "scene-01")?.position).toEqual({ x: 16, y: 24 });
-        expect(positioned.find((node) => node.id === "scene-02")?.position).toEqual({ x: 16, y: 360 });
+        expect(positioned.find((node) => node.id === "scene-02")?.position).toEqual({ x: 16, y: 584 });
         expect(positioned.find((node) => node.id === "shot-001")?.position).toEqual({ x: 64, y: 312 });
         expect(positioned.find((node) => node.id === "manual-character")?.position).toEqual({ x: 101, y: 101 });
     });
@@ -117,6 +118,23 @@ describe("Film layout", () => {
 
     test("位置吸附到默认八像素网格", () => {
         expect(snapCanvasPosition({ x: 13, y: 21 })).toEqual({ x: 16, y: 24 });
+    });
+
+    test("整理 Scene Lane 时保持 pinned 投影的位置不变", () => {
+        const pinnedScene = {
+            ...filmNode("scene-pinned", "scene", { x: 333, y: 777 }),
+            domainRef: { projectId: "project-01", sceneId: "scene-pinned" },
+            layout: { mode: "pinned" as const, order: 1 },
+        };
+        const autoShot = {
+            ...filmNode("shot-pinned-scene", "shot"),
+            domainRef: { projectId: "project-01", sceneId: "scene-pinned", shotId: "shot-001" },
+            layout: { mode: "auto" as const, order: 1 },
+        };
+
+        const positioned = applyFilmAutoLayout([pinnedScene, autoShot]);
+        expect(positioned.find((node) => node.id === pinnedScene.id)?.position).toEqual(pinnedScene.position);
+        expect(positioned.find((node) => node.id === autoShot.id)?.position).toEqual({ x: 384, y: 1064 });
     });
 });
 
@@ -151,5 +169,31 @@ describe("Film semantic contracts", () => {
         expect(moved.layout).toEqual({ mode: "manual", lane: "scene-01", order: 1 });
         expect(moved.domainRef).toEqual(shot.domainRef);
         expect(moved.filmState).toEqual(shot.filmState);
+    });
+});
+
+describe("Film collision-aware layout", () => {
+    test("八个自动结果避开 pinned 节点且彼此不重叠", () => {
+        const pinned = {
+            ...filmNode("pinned", "result", { x: 0, y: 0 }),
+            width: 120,
+            height: 80,
+            layout: { mode: "pinned" as const },
+        };
+        const results = Array.from({ length: 8 }, (_, index) => ({
+            ...filmNode(`result-${index}`, "result"),
+            width: 120,
+            height: 80,
+            layout: { mode: "auto" as const, order: index },
+        }));
+
+        const positioned = applyFilmResultLayout([pinned, ...results]);
+        const autoResults = positioned.filter((node) => node.id.startsWith("result-"));
+
+        expect(positioned.find((node) => node.id === pinned.id)?.position).toEqual(pinned.position);
+        autoResults.forEach((node, index) => {
+            expect(canvasRectsOverlap(canvasNodeRect(node), canvasNodeRect(pinned), 32)).toBe(false);
+            autoResults.slice(index + 1).forEach((other) => expect(canvasRectsOverlap(canvasNodeRect(node), canvasNodeRect(other), 32)).toBe(false));
+        });
     });
 });

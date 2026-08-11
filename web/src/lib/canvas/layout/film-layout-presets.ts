@@ -12,7 +12,7 @@ export const FILM_SCENE_LANE = {
 
 type SceneLane = {
     position: Position;
-    nextShotY: number;
+    shotNodes: CanvasNodeData[];
 };
 
 // 仅整理显式标记为 auto 的影视节点；用户手动摆放的节点不会被布局引擎覆盖。
@@ -23,31 +23,38 @@ export function layoutFilmSceneLanes(nodes: CanvasNodeData[], origin: Position =
         .sort(compareFilmLayoutOrder);
     const lanes = new Map<string, SceneLane>();
     const laneOrigin = sceneNodes[0]?.position || origin;
+    let nextSceneY = laneOrigin.y;
 
-    sceneNodes.forEach((scene, index) => {
+    sceneNodes.forEach((scene) => {
+        const shotNodes = nodes
+            .filter((node) => node.filmKind === "shot" && node.layout?.mode === "auto" && node.domainRef?.sceneId === scene.domainRef?.sceneId)
+            .sort(compareFilmLayoutOrder);
         const position = {
             x: laneOrigin.x,
-            y: laneOrigin.y + index * (FILM_SCENE_LANE.sceneHeight + FILM_SCENE_LANE.sceneGap),
+            y: nextSceneY,
         };
         const scenePosition = scene.layout?.mode === "auto" ? position : scene.position;
         if (scene.layout?.mode === "auto") positions.set(scene.id, scenePosition);
         if (scene.domainRef?.sceneId) {
             lanes.set(scene.domainRef.sceneId, {
                 position: scenePosition,
-                nextShotY: scenePosition.y + FILM_SCENE_LANE.shotOffsetY,
+                shotNodes,
             });
         }
+        const sceneBottom = scenePosition.y + FILM_SCENE_LANE.sceneHeight;
+        const shotsBottom = shotNodes.length
+            ? scenePosition.y + FILM_SCENE_LANE.shotOffsetY + shotNodes.reduce((total, shot) => total + shot.height, 0) + Math.max(0, shotNodes.length - 1) * FILM_SCENE_LANE.shotGap
+            : sceneBottom;
+        nextSceneY = Math.max(sceneBottom, shotsBottom) + FILM_SCENE_LANE.sceneGap;
     });
 
-    nodes
-        .filter((node) => node.filmKind === "shot" && node.layout?.mode === "auto")
-        .sort(compareFilmLayoutOrder)
-        .forEach((shot) => {
-            const lane = shot.domainRef?.sceneId ? lanes.get(shot.domainRef.sceneId) : undefined;
-            if (!lane) return;
-            positions.set(shot.id, { x: lane.position.x + FILM_SCENE_LANE.shotOffsetX, y: lane.nextShotY });
-            lane.nextShotY += shot.height + FILM_SCENE_LANE.shotGap;
+    lanes.forEach((lane) => {
+        let nextShotY = lane.position.y + FILM_SCENE_LANE.shotOffsetY;
+        lane.shotNodes.forEach((shot) => {
+            positions.set(shot.id, { x: lane.position.x + FILM_SCENE_LANE.shotOffsetX, y: nextShotY });
+            nextShotY += shot.height + FILM_SCENE_LANE.shotGap;
         });
+    });
 
     return positions;
 }
