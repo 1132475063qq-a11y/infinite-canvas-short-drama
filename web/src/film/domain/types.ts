@@ -3,6 +3,7 @@ export type FilmNodeKind =
     | "story"
     | "script"
     | "scene"
+    | "shot"
     | "character"
     | "location"
     | "prop"
@@ -57,5 +58,5 @@ export function createFilmNodeState(patch: Partial<FilmNodeState> = {}): FilmNod
 }
 
 export function isFilmNodeKind(value: unknown): value is FilmNodeKind {
-    return typeof value === "string" && ["project", "story", "script", "scene", "character", "location", "prop", "acting", "prompt_pack", "generation", "result", "qc", "retry", "needs_you", "agent_task"].includes(value);
+    return typeof value === "string" && ["project", "story", "script", "scene", "shot", "character", "location", "prop", "acting", "prompt_pack", "generation", "result", "qc", "retry", "needs_you", "agent_task"].includes(value);
 }

@@ -209,7 +209,7 @@ export function useCanvasSelectionController({
                     return initial ? {
                         ...node,
                         position: snapCanvasPosition({ x: initial.x + dx, y: initial.y + dy }),
-                        layout: node.filmKind ? { ...node.layout, mode: "manual" } : node.layout,
+                        layout: node.filmKind ? { ...node.layout, mode: "manual" as const } : node.layout,
                     } : node;
                 });
                 return applyFrameDrop(positioned, draggedNodeIds, findFrameDropTarget(positioned, draggedNodeIds));

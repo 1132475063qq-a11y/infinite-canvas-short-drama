@@ -180,11 +180,12 @@ export function CanvasToolbar({
         section: cmd.section,
         onClick: () => runAddAction(() => cmd.run(ctx)),
     });
-    const filmCommands: CanvasCreateCommand[] = [
+    const filmCommandCandidates: Array<CanvasCreateCommand | null> = [
         onAddFilmScene ? { id: "film-scene", label: "影视场景", icon: <Clapperboard />, badge: "SC", section: "node", onClick: () => runAddAction(onAddFilmScene) } : null,
         onAddFilmShot ? { id: "film-shot", label: "影视镜头", icon: <CircleDot />, badge: "SH", section: "node", onClick: () => runAddAction(onAddFilmShot) } : null,
         onAddFilmCharacter ? { id: "film-character", label: "角色资产", icon: <PersonStanding />, badge: "CH", section: "node", onClick: () => runAddAction(onAddFilmCharacter) } : null,
-    ].filter((command): command is CanvasCreateCommand => command !== null);
+    ];
+    const filmCommands = filmCommandCandidates.filter((command): command is CanvasCreateCommand => command !== null);
     const createCommands = [...filmCommands, ...addNodeCommands.map(toCommand)];
 
     return (
