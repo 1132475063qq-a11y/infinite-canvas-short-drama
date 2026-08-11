@@ -46,6 +46,25 @@ export type FilmNodeLayout = {
 
 export type FilmEdgeType = "dependency" | "reference" | "derivation" | "continuity" | "authority";
 
+// Film ports describe production meaning. They deliberately sit beside the canvas
+// renderer handles so the existing free-form connection UI stays backwards compatible.
+export type FilmNodePort =
+    | "scene_context"
+    | "shot_contract"
+    | "asset_reference"
+    | "acting_direction"
+    | "prompt"
+    | "generation_job"
+    | "result"
+    | "qc_decision"
+    | "retry_request"
+    | "generic";
+
+export type FilmConnectionPorts = {
+    from: FilmNodePort;
+    to: FilmNodePort;
+};
+
 export const DEFAULT_FILM_NODE_STATE: FilmNodeState = {
     lifecycle: "draft",
     production: "not_started",

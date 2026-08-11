@@ -1,7 +1,7 @@
 import type { PortraitTextureSettings } from "@/lib/canvas/canvas-portrait-texture";
 import type { StyleExecutionPlan } from "@/lib/canvas/style-profile";
 import type { SrtEntry, SubtitleHighlight, SubtitleStyle } from "@/types/timeline";
-import type { FilmEdgeType, FilmNodeDomainRef, FilmNodeKind, FilmNodeLayout, FilmNodeState } from "@/film/domain/types";
+import type { FilmConnectionPorts, FilmEdgeType, FilmNodeDomainRef, FilmNodeKind, FilmNodeLayout, FilmNodeState } from "@/film/domain/types";
 
 export type Position = {
     x: number;
@@ -307,6 +307,7 @@ export type CanvasConnection = {
     fromNodeId: string;
     toNodeId: string;
     edgeType?: FilmEdgeType;
+    filmPorts?: FilmConnectionPorts;
     fromHandleId?: string;
     toHandleId?: string;
     fromAnchorRatio?: number;

@@ -1,6 +1,8 @@
 import { describe, expect, test } from "bun:test";
 
 import { migrateCanvasProjectDocument } from "../src/film/domain/document-migration";
+import { describeFilmConnection } from "../src/film/domain/edge-contract";
+import { moveFilmNodeProjection } from "../src/film/domain/node-positioning";
 import { formatFilmSceneTitle, hasFilmSceneProjection, normalizeFilmSceneTitle } from "../src/film/domain/scene-projection";
 import { applyFilmAutoLayout } from "../src/lib/canvas/layout/layout-engine";
 import { reconcileFilmSceneProjections } from "../src/lib/canvas/layout/film-scene-projection";
@@ -115,5 +117,39 @@ describe("Film layout", () => {
 
     test("位置吸附到默认八像素网格", () => {
         expect(snapCanvasPosition({ x: 13, y: 21 })).toEqual({ x: 16, y: 24 });
+    });
+});
+
+describe("Film semantic contracts", () => {
+    test("影视节点连线带有独立于画布句柄的端口和边语义", () => {
+        const scene = { ...filmNode("scene-01", "scene"), domainRef: { projectId: "project-01", sceneId: "scene-01" } };
+        const shot = { ...filmNode("shot-001", "shot"), domainRef: { projectId: "project-01", sceneId: "scene-01", shotId: "shot-001" } };
+        const character = { ...filmNode("character-01", "character"), domainRef: { projectId: "project-01", assetId: "asset-01" } };
+
+        expect(describeFilmConnection(scene, shot)).toEqual({
+            edgeType: "continuity",
+            filmPorts: { from: "scene_context", to: "scene_context" },
+        });
+        expect(describeFilmConnection(character, shot)).toEqual({
+            edgeType: "reference",
+            filmPorts: { from: "asset_reference", to: "scene_context" },
+        });
+        expect(describeFilmConnection(scene, filmNode("legacy", undefined))).toBeUndefined();
+    });
+
+    test("拖动镜头仅改变画布投影，不改变生产对象引用或状态", () => {
+        const shot = {
+            ...filmNode("shot-001", "shot"),
+            domainRef: { projectId: "project-01", sceneId: "scene-01", shotId: "shot-001" },
+            filmState: { lifecycle: "review" as const, production: "ready" as const, evidence: "recorded" as const, attention: "none" as const },
+            layout: { mode: "auto" as const, lane: "scene-01", order: 1 },
+        };
+
+        const moved = moveFilmNodeProjection(shot, { x: 101, y: 205 });
+
+        expect(moved.position).toEqual({ x: 104, y: 208 });
+        expect(moved.layout).toEqual({ mode: "manual", lane: "scene-01", order: 1 });
+        expect(moved.domainRef).toEqual(shot.domainRef);
+        expect(moved.filmState).toEqual(shot.filmState);
     });
 });
