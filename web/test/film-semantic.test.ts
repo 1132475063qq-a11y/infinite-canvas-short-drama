@@ -3,6 +3,7 @@ import { describe, expect, test } from "bun:test";
 import { migrateCanvasProjectDocument } from "../src/film/domain/document-migration";
 import { formatFilmSceneTitle, hasFilmSceneProjection, normalizeFilmSceneTitle } from "../src/film/domain/scene-projection";
 import { applyFilmAutoLayout } from "../src/lib/canvas/layout/layout-engine";
+import { reconcileFilmSceneProjections } from "../src/lib/canvas/layout/film-scene-projection";
 import { snapCanvasPosition } from "../src/lib/canvas/layout/snap-engine";
 import { CanvasNodeType, type CanvasNodeData } from "../src/types/canvas";
 
@@ -92,6 +93,24 @@ describe("Film layout", () => {
         expect(positioned.find((node) => node.id === "scene-02")?.position).toEqual({ x: 16, y: 360 });
         expect(positioned.find((node) => node.id === "shot-001")?.position).toEqual({ x: 64, y: 312 });
         expect(positioned.find((node) => node.id === "manual-character")?.position).toEqual({ x: 101, y: 101 });
+    });
+
+    test("旧镜头画布会补上所属场景投影，但不会重建生产对象", () => {
+        const shot = {
+            ...filmNode("shot-001", "shot", { x: 400, y: 600 }),
+            domainRef: { projectId: "project-01", sceneId: "scene-01", shotId: "shot-001" },
+            layout: { mode: "auto" as const, order: 1 },
+        };
+        const reconciled = reconcileFilmSceneProjections([shot], "project-01", [{ id: "scene-01", code: "SC01", title: "未命名场景", position: 0 }]);
+
+        expect(reconciled).toHaveLength(2);
+        expect(reconciled.find((node) => node.filmKind === "scene")).toMatchObject({
+            title: "SC01 · 未命名场景",
+            domainRef: { projectId: "project-01", sceneId: "scene-01" },
+            position: { x: 352, y: 312 },
+        });
+        expect(reconciled.find((node) => node.id === "shot-001")?.position).toEqual({ x: 400, y: 600 });
+        expect(reconcileFilmSceneProjections(reconciled, "project-01", [{ id: "scene-01", code: "SC01", title: "未命名场景", position: 0 }])).toBe(reconciled);
     });
 
     test("位置吸附到默认八像素网格", () => {

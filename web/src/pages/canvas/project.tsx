@@ -64,6 +64,7 @@ import { CanvasLeaferGraphicsLayer } from "@/components/canvas/canvas-leafer-gra
 import { CanvasFreeformEmptyState, CanvasLinkedProjectEmptyState, CanvasShortDramaEmptyState, CanvasShortDramaGuide, CanvasStoryInputNodeContent, CanvasStylePlaceholderNodeContent } from "@/components/canvas/canvas-short-drama-entry";
 import { createCanvasNode, createFilmCanvasNode, getInputSummary, isHiddenBatchChild, persistCanvasWorkspaceMode, readCanvasWorkspaceMode } from "@/lib/canvas/canvas-project-domain";
 import { applyFilmAutoLayout } from "@/lib/canvas/layout/layout-engine";
+import { reconcileFilmSceneProjections } from "@/lib/canvas/layout/film-scene-projection";
 import { deriveStoryboardPipelineProgress } from "@/lib/canvas/canvas-storyboard-progress";
 import { CanvasAgentChangeToast, CanvasMergeStatusToast, CanvasUploadStatusToast } from "./canvas-project-feedback";
 import { backendProviderConfig, getGenerationCount } from "@/lib/canvas/canvas-project-generation";
@@ -320,7 +321,11 @@ function InfiniteCanvasPage() {
     const refetchLinkedProject = linkedProjectQuery.refetch;
     useEffect(() => {
         if (!projectLoaded || !linkedProjectQuery.data) return;
-        setNodes((current) => refreshCanvasCharacterReferenceNodes(current, linkedProjectQuery.data.assets));
+        setNodes((current) => reconcileFilmSceneProjections(
+            refreshCanvasCharacterReferenceNodes(current, linkedProjectQuery.data.assets),
+            linkedProjectQuery.data.project.id,
+            linkedProjectQuery.data.scenes,
+        ));
     }, [linkedProjectQuery.data, projectLoaded, setNodes]);
     const canvasContext = useMemo(() => summarizeCanvasContext(nodes, selectedNodeIds, linkedProjectQuery.data?.units), [linkedProjectQuery.data?.units, nodes, selectedNodeIds]);
 
