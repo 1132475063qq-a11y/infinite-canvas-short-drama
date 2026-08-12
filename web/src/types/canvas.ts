@@ -1,6 +1,8 @@
 import type { PortraitTextureSettings } from "@/lib/canvas/canvas-portrait-texture";
+import type { CanvasGridSize } from "@/lib/canvas/layout/layout-types";
 import type { StyleExecutionPlan } from "@/lib/canvas/style-profile";
 import type { SrtEntry, SubtitleHighlight, SubtitleStyle } from "@/types/timeline";
+import type { FilmConnectionPorts, FilmEdgeType, FilmNodeDomainRef, FilmNodeKind, FilmNodeLayout, FilmNodeState } from "@/film/domain/types";
 
 export type Position = {
     x: number;
@@ -288,6 +290,11 @@ export type CanvasNodeMetadata = {
 export type CanvasNodeData = {
     id: string;
     type: CanvasNodeType;
+    // Renderer type and film meaning remain independent so media nodes can be real production projections.
+    filmKind?: FilmNodeKind;
+    domainRef?: FilmNodeDomainRef;
+    filmState?: FilmNodeState;
+    layout?: FilmNodeLayout;
     title: string;
     position: Position;
     width: number;
@@ -300,11 +307,36 @@ export type CanvasConnection = {
     id: string;
     fromNodeId: string;
     toNodeId: string;
+    edgeType?: FilmEdgeType;
+    filmPorts?: FilmConnectionPorts;
     fromHandleId?: string;
     toHandleId?: string;
     fromAnchorRatio?: number;
     toAnchorRatio?: number;
 };
+
+export const CANVAS_DOCUMENT_SCHEMA_VERSION = 2;
+
+export type CanvasDocumentGroup = {
+    id: string;
+    kind: "frame" | "scene" | "custom";
+    nodeIds: string[];
+    title?: string;
+    collapsed?: boolean;
+};
+
+export type CanvasDocumentV2 = {
+    schemaVersion: number;
+    projectId?: string;
+    layout: { gridSize: CanvasGridSize };
+    nodes: CanvasNodeData[];
+    connections: CanvasConnection[];
+    viewport: ViewportTransform;
+    groups: CanvasDocumentGroup[];
+};
+
+// Keep the host-facing name while the document contract is upgraded in place.
+export type CanvasProjectDocument = CanvasDocumentV2;
 
 export type CanvasDisplayConnection = {
     connection: CanvasConnection;

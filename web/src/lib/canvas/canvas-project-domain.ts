@@ -6,6 +6,8 @@ import { isFrameNode } from "@/lib/canvas/canvas-frame";
 import { nodeSizeFromRatio } from "@/lib/canvas/canvas-node-size";
 import type { CanvasResourceReference } from "@/lib/canvas/canvas-resource-references";
 import { scopedLocalStorage } from "@/lib/user-scope";
+import { createFilmNodeState, type FilmNodeDomainRef, type FilmNodeKind } from "@/film/domain/types";
+import { isFilmProductionProjection } from "@/film/domain/node-projection";
 import type { GenerationTask } from "@/services/api/task-center";
 import { CanvasNodeType, type CanvasConnection, type CanvasNodeData, type CanvasNodeMetadata, type CanvasWorkspaceMode, type ConnectionHandle, type Position, type StoryboardColumn, type StoryboardRow } from "@/types/canvas";
 
@@ -47,6 +49,17 @@ export function createCanvasNode(type: CanvasNodeType, position: Position, metad
         metadata: type === CanvasNodeType.Script
             ? { ...spec.metadata, ...metadata, storyboard: metadata?.storyboard || { rows: [1, 2, 3].map((shotNumber) => createStoryboardRow(shotNumber)), visibleColumns: ["shotNumber", "durationSeconds", "plotDescription", "dialogue"], referenceNodeIds: [] } }
             : { ...spec.metadata, ...metadata, ...(type === CanvasNodeType.Drawing ? { drawingId: metadata?.drawingId || `${id}-document` } : {}) },
+    };
+}
+
+export function createFilmCanvasNode(type: CanvasNodeType, filmKind: FilmNodeKind, position: Position, domainRef: FilmNodeDomainRef, metadata?: CanvasNodeMetadata): CanvasNodeData {
+    const node = createCanvasNode(type, position, metadata);
+    return {
+        ...node,
+        filmKind,
+        domainRef,
+        filmState: createFilmNodeState({ evidence: "recorded" }),
+        layout: { mode: "manual" },
     };
 }
 
@@ -173,7 +186,7 @@ export function normalizeConnection(firstNodeId: string, secondNodeId: string, n
     const first = nodes.find((node) => node.id === firstNodeId);
     const second = nodes.find((node) => node.id === secondNodeId);
     if (!first || !second || first.id === second.id) return null;
-    if (isFrameNode(first) || isFrameNode(second)) return null;
+    if ((isFrameNode(first) && !isFilmProductionProjection(first)) || (isFrameNode(second) && !isFilmProductionProjection(second))) return null;
     if (first.type === CanvasNodeType.Config && second.type === CanvasNodeType.Config) return null;
     if (second.type === CanvasNodeType.Config) return { fromNodeId: first.id, toNodeId: second.id };
     if (first.type === CanvasNodeType.Config && firstHandleType === "target") return { fromNodeId: second.id, toNodeId: first.id };
@@ -244,69 +257,6 @@ export function getInputSummary(inputs: NodeGenerationInput[]) {
 function clamp(value: number, min: number, max: number) {
     return Math.min(Math.max(value, min), max);
 }
-
-export type NodeAlignmentContext = {
-    movingBounds: { left: number; top: number; right: number; bottom: number };
-    targets: Array<{ x: number[]; y: number[] }>;
-};
-
-export function createNodeAlignmentContext(nodes: CanvasNodeData[], initialPositions: Array<{ id: string; x: number; y: number }>): NodeAlignmentContext | null {
-    const movingIds = new Set(initialPositions.map((item) => item.id));
-    const initialById = new Map(initialPositions.map((item) => [item.id, item]));
-    const movingNodes = nodes.filter((node) => movingIds.has(node.id));
-    if (!movingNodes.length) return null;
-    const nodeById = new Map(nodes.map((node) => [node.id, node]));
-    const left = Math.min(...movingNodes.map((node) => initialById.get(node.id)?.x ?? node.position.x));
-    const top = Math.min(...movingNodes.map((node) => initialById.get(node.id)?.y ?? node.position.y));
-    const right = Math.max(...movingNodes.map((node) => (initialById.get(node.id)?.x ?? node.position.x) + node.width));
-    const bottom = Math.max(...movingNodes.map((node) => (initialById.get(node.id)?.y ?? node.position.y) + node.height));
-    const targets = nodes.flatMap((node) => {
-        if (movingIds.has(node.id)) return [];
-        const batchRoot = node.metadata?.batchRootId ? nodeById.get(node.metadata.batchRootId) : null;
-        if (batchRoot && !batchRoot.metadata?.imageBatchExpanded) return [];
-        const parent = node.parentId ? nodeById.get(node.parentId) : null;
-        if (parent && isFrameNode(parent) && parent.metadata?.frame?.collapsed) return [];
-        return [{
-            x: [node.position.x, node.position.x + node.width / 2, node.position.x + node.width],
-            y: [node.position.y, node.position.y + node.height / 2, node.position.y + node.height],
-        }];
-    });
-    return { movingBounds: { left, top, right, bottom }, targets };
-}
-
-export function calculateNodeAlignment(context: NodeAlignmentContext | null, rawOffset: Position, threshold: number) {
-    if (!context) return { offset: rawOffset, guides: {} as { vertical?: number; horizontal?: number } };
-    const { left, top, right, bottom } = context.movingBounds;
-    const movingX = [left + rawOffset.x, (left + right) / 2 + rawOffset.x, right + rawOffset.x];
-    const movingY = [top + rawOffset.y, (top + bottom) / 2 + rawOffset.y, bottom + rawOffset.y];
-    let bestXDelta: number | undefined;
-    let bestXGuide: number | undefined;
-    let bestYDelta: number | undefined;
-    let bestYGuide: number | undefined;
-    context.targets.forEach(({ x: targetsX, y: targetsY }) => {
-        movingX.forEach((value, anchorIndex) => {
-            const target = targetsX[anchorIndex];
-            const delta = target - value;
-            if (Math.abs(delta) <= threshold && (bestXDelta === undefined || Math.abs(delta) < Math.abs(bestXDelta))) {
-                bestXDelta = delta;
-                bestXGuide = target;
-            }
-        });
-        movingY.forEach((value, anchorIndex) => {
-            const target = targetsY[anchorIndex];
-            const delta = target - value;
-            if (Math.abs(delta) <= threshold && (bestYDelta === undefined || Math.abs(delta) < Math.abs(bestYDelta))) {
-                bestYDelta = delta;
-                bestYGuide = target;
-            }
-        });
-    });
-    return {
-        offset: { x: rawOffset.x + (bestXDelta || 0), y: rawOffset.y + (bestYDelta || 0) },
-        guides: { vertical: bestXGuide, horizontal: bestYGuide },
-    };
-}
-
 
 export function isHiddenBatchChild(node: CanvasNodeData, nodes: CanvasNodeData[], collapsingBatchIds?: Set<string>) {
     const rootId = node.metadata?.batchRootId;

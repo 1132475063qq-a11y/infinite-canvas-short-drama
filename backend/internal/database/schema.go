@@ -42,6 +42,7 @@ func Models() []any {
 		&model.StyleProfile{},
 		&model.ProjectUnit{},
 		&model.CanvasUnitLink{},
+		&model.Scene{},
 		&model.Shot{},
 		&model.ShotAssetReference{},
 		&model.WorkflowTemplateVersion{},

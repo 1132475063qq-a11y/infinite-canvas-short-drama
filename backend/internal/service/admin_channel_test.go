@@ -56,6 +56,9 @@ func TestMergeChannelRequestSupportsEnabledOnlyPatch(t *testing.T) {
 }
 
 func TestChannelFromRequestStoresAndClearsHeaders(t *testing.T) {
+	// example.com may resolve to a private test-network address in isolated CI.
+	// This test covers header serialization, not outbound DNS policy.
+	t.Setenv("CANVAS_ALLOW_PRIVATE_UPSTREAMS", "true")
 	request := ChannelRequest{Name: "Headers", BaseURL: "https://example.com/v1", Headers: []OutboundHeader{{Name: "User-Agent", Value: "Custom Agent"}}}
 	channel, err := channelFromRequest(request, model.ModelChannel{})
 	if err != nil {
@@ -99,6 +102,8 @@ func TestChannelFromRequestRejectsInvalidConcurrencyLimit(t *testing.T) {
 func TestRuntimeConcurrencyUsesEnvironmentFallback(t *testing.T) {
 	t.Setenv("CANVAS_CHANNEL_CONCURRENCY", "7")
 	t.Setenv("CANVAS_WORKER_CONCURRENCY", "9")
+	// The global-concurrency assertion is independent of public DNS resolution.
+	t.Setenv("CANVAS_ALLOW_PRIVATE_UPSTREAMS", "true")
 	setting := defaultRuntimePolicy().Task
 	if setting.ChannelConcurrency != 7 || setting.WorkerConcurrency != 9 {
 		t.Fatalf("runtimeConcurrencyFromEnvironment() = %#v", setting)

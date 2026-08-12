@@ -1,7 +1,7 @@
 import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useRef, useState, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
 import { Segmented, Switch } from "antd";
-import { CircleDot, Grid2x2, Moon, Palette, Sun, Square, Info } from "lucide-react";
+import { CircleDot, Clapperboard, Grid2x2, Moon, Palette, PersonStanding, Sun, Square, Info } from "lucide-react";
 
 import { AnimatedThemeToggler } from "@/components/ui/animated-theme-toggler";
 import { FloatingDock } from "@/components/ui/aceternity/floating-dock";
@@ -10,6 +10,7 @@ import { CanvasCreateMenu, type CanvasCreateCommand } from "@/components/canvas/
 import { ToolbarSettingsModal } from "@/components/canvas/toolbars/toolbar-settings-modal";
 import { aceternityMotion } from "@/lib/aceternity-motion";
 import { canvasDockStyle } from "@/lib/canvas/canvas-aceternity-style";
+import { CANVAS_GRID_SIZES, type CanvasGridSize } from "@/lib/canvas/layout/layout-types";
 import { canvasThemes, type CanvasBackgroundMode, type CanvasColorTheme, type CanvasTheme } from "@/lib/canvas-theme";
 import { defaultToolbarPrefs, readToolbarPrefs, resolveAddNodeMenuCommands, resolveToolbarEntries, type AddNodeMenuCommand, type ToolContext, type ToolbarHandlers, type ToolbarPrefs } from "@/lib/canvas/tool-registry";
 import { useThemeStore } from "@/stores/use-theme-store";
@@ -25,6 +26,7 @@ export function CanvasToolbar({
     canRedo,
     backgroundMode,
     showImageInfo,
+    gridSize,
     onAddImage,
     onAddVideo,
     onAddAudio,
@@ -42,8 +44,12 @@ export function CanvasToolbar({
     onDeselect,
     onBackgroundModeChange,
     onShowImageInfoChange,
+    onGridSizeChange,
     onOpenMyAssets,
     onOpenProjectCharacters,
+    onAddFilmScene,
+    onAddFilmShot,
+    onAddFilmCharacter,
 }: {
     selectedCount: number;
     workspaceMode: CanvasWorkspaceMode;
@@ -54,6 +60,7 @@ export function CanvasToolbar({
     canRedo: boolean;
     backgroundMode: CanvasBackgroundMode;
     showImageInfo: boolean;
+    gridSize: CanvasGridSize;
     onAddImage: () => void;
     onAddVideo: () => void;
     onAddAudio: () => void;
@@ -71,8 +78,12 @@ export function CanvasToolbar({
     onDeselect: () => void;
     onBackgroundModeChange: (mode: CanvasBackgroundMode) => void;
     onShowImageInfoChange: (show: boolean) => void;
+    onGridSizeChange: (gridSize: CanvasGridSize) => void;
     onOpenMyAssets: () => void;
     onOpenProjectCharacters: () => void;
+    onAddFilmScene?: () => void;
+    onAddFilmShot?: () => void;
+    onAddFilmCharacter?: () => void;
 }) {
     const rootRef = useRef<HTMLDivElement>(null);
     const dockRef = useRef<HTMLDivElement>(null);
@@ -174,7 +185,13 @@ export function CanvasToolbar({
         section: cmd.section,
         onClick: () => runAddAction(() => cmd.run(ctx)),
     });
-    const createCommands = addNodeCommands.map(toCommand);
+    const filmCommandCandidates: Array<CanvasCreateCommand | null> = [
+        onAddFilmScene ? { id: "film-scene", label: "影视场景", icon: <Clapperboard />, badge: "SC", section: "node", onClick: () => runAddAction(onAddFilmScene) } : null,
+        onAddFilmShot ? { id: "film-shot", label: "影视镜头", icon: <CircleDot />, badge: "SH", section: "node", onClick: () => runAddAction(onAddFilmShot) } : null,
+        onAddFilmCharacter ? { id: "film-character", label: "角色资产", icon: <PersonStanding />, badge: "CH", section: "node", onClick: () => runAddAction(onAddFilmCharacter) } : null,
+    ];
+    const filmCommands = filmCommandCandidates.filter((command): command is CanvasCreateCommand => command !== null);
+    const createCommands = [...filmCommands, ...addNodeCommands.map(toCommand)];
 
     return (
         <div ref={rootRef} data-canvas-no-zoom className="pointer-events-none absolute inset-x-[var(--canvas-inset-x)] bottom-[var(--canvas-inset-y)] z-[var(--z-toolbar)] flex justify-center">
@@ -200,7 +217,7 @@ export function CanvasToolbar({
                                 <CanvasThemeButton colorTheme={colorTheme} targetTheme="light" onThemeChange={setTheme}><Sun className="size-3.5" />浅色</CanvasThemeButton>
                                 <CanvasThemeButton colorTheme={colorTheme} targetTheme="dark" onThemeChange={setTheme}><Moon className="size-3.5" />深色</CanvasThemeButton>
                             </div>
-                            <div className="mt-3 text-[var(--fs-micro)] font-semibold uppercase opacity-45">空间网格</div>
+                            <div className="mt-3 text-[var(--fs-micro)] font-semibold uppercase opacity-45">背景网格</div>
                             <Segmented
                                 className="mt-1 w-full !rounded-[var(--dock-item-radius-labeled)] !p-0.5 [&_.ant-segmented-group]:!flex [&_.ant-segmented-item]:!min-h-7 [&_.ant-segmented-item]:!flex-1 [&_.ant-segmented-item-label]:!min-h-7 [&_.ant-segmented-item-label]:!text-[var(--fs-tiny)] [&_.ant-segmented-item-label]:!leading-7"
                                 value={backgroundMode}
@@ -210,6 +227,14 @@ export function CanvasToolbar({
                                     { value: "lines", label: <span className="inline-flex items-center gap-1.5"><Grid2x2 className="size-3.5" />线</span> },
                                     { value: "blank", label: <span className="inline-flex items-center gap-1.5"><Square className="size-3.5" />空白</span> },
                                 ]}
+                            />
+                            <div className="mt-3 text-[var(--fs-micro)] font-semibold uppercase opacity-45">节点吸附</div>
+                            <Segmented
+                                aria-label="节点吸附网格"
+                                className="mt-1 w-full !rounded-[var(--dock-item-radius-labeled)] !p-0.5 [&_.ant-segmented-group]:!flex [&_.ant-segmented-item]:!min-h-7 [&_.ant-segmented-item]:!flex-1 [&_.ant-segmented-item-label]:!min-h-7 [&_.ant-segmented-item-label]:!text-[var(--fs-tiny)] [&_.ant-segmented-item-label]:!leading-7"
+                                value={gridSize}
+                                onChange={(value) => onGridSizeChange(value as CanvasGridSize)}
+                                options={CANVAS_GRID_SIZES.map((value) => ({ value, label: value === 0 ? "Off" : String(value) }))}
                             />
                             <div className="mt-2.5 flex items-center justify-between gap-2 rounded-[var(--dock-item-radius-labeled)] border px-2.5 py-2" style={{ background: theme.spatial.surface, borderColor: theme.toolbar.border }}>
                                 <span className="inline-flex min-w-0 items-center gap-1.5 text-[var(--fs-tiny)] font-semibold"><Info className="size-3" />图片信息</span>

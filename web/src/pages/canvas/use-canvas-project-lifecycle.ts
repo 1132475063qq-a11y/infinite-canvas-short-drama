@@ -3,6 +3,7 @@ import { App } from "antd";
 import { useNavigate } from "react-router";
 
 import type { CanvasBackgroundMode } from "@/lib/canvas-theme";
+import { normalizeCanvasGridSize, type CanvasGridSize } from "@/lib/canvas/layout/layout-types";
 import { removeCanvasDrawing } from "@/lib/canvas/canvas-drawing-storage";
 import { hydrateAssistantImages, hydrateCanvasImages, resetInterruptedGeneration } from "@/lib/canvas/canvas-project-generation";
 import { listAddedSkills, type Skill } from "@/services/api/skills";
@@ -20,6 +21,7 @@ type UseCanvasProjectLifecycleOptions = {
     activeChatId: string | null;
     backgroundMode: CanvasBackgroundMode;
     showImageInfo: boolean;
+    gridSize: CanvasGridSize;
     viewport: ViewportTransform;
     nodesRef: MutableRefObject<CanvasNodeData[]>;
     connectionsRef: MutableRefObject<CanvasConnection[]>;
@@ -31,6 +33,7 @@ type UseCanvasProjectLifecycleOptions = {
     setActiveChatId: Dispatch<SetStateAction<string | null>>;
     setBackgroundMode: Dispatch<SetStateAction<CanvasBackgroundMode>>;
     setShowImageInfo: Dispatch<SetStateAction<boolean>>;
+    setGridSize: Dispatch<SetStateAction<CanvasGridSize>>;
     setViewport: Dispatch<SetStateAction<ViewportTransform>>;
     setProjectLoaded: Dispatch<SetStateAction<boolean>>;
     resetHistory: (snapshot: CanvasHistorySnapshot) => void;
@@ -47,6 +50,7 @@ export function useCanvasProjectLifecycle({
     activeChatId,
     backgroundMode,
     showImageInfo,
+    gridSize,
     viewport,
     nodesRef,
     connectionsRef,
@@ -58,6 +62,7 @@ export function useCanvasProjectLifecycle({
     setActiveChatId,
     setBackgroundMode,
     setShowImageInfo,
+    setGridSize,
     setViewport,
     setProjectLoaded,
     resetHistory,
@@ -94,6 +99,7 @@ export function useCanvasProjectLifecycle({
                 activeChatId: project.activeChatId || null,
                 backgroundMode: project.backgroundMode || "dots",
                 showImageInfo: project.showImageInfo || false,
+                gridSize: normalizeCanvasGridSize(project.layout?.gridSize),
             };
             nodesRef.current = snapshot.nodes;
             connectionsRef.current = snapshot.connections;
@@ -104,6 +110,7 @@ export function useCanvasProjectLifecycle({
             setActiveChatId(snapshot.activeChatId);
             setBackgroundMode(snapshot.backgroundMode);
             setShowImageInfo(snapshot.showImageInfo);
+            setGridSize(snapshot.gridSize);
             setViewport(project.viewport);
             resetHistory(snapshot);
             setProjectLoaded(true);
@@ -125,7 +132,7 @@ export function useCanvasProjectLifecycle({
         return () => {
             cancelled = true;
         };
-    }, [hydrated, message, navigate, openProject, projectId, resetHistory, setActiveChatId, setBackgroundMode, setChatSessions, setConnections, setNodes, setShowImageInfo, setViewport]);
+    }, [hydrated, message, navigate, openProject, projectId, resetHistory, setActiveChatId, setBackgroundMode, setChatSessions, setConnections, setGridSize, setNodes, setShowImageInfo, setViewport]);
 
     useEffect(() => {
         if (!projectLoaded) return;
@@ -144,8 +151,8 @@ export function useCanvasProjectLifecycle({
 
     useEffect(() => {
         if (!projectLoaded || historyPausedRef.current) return;
-        updateProject(projectId, { nodes, connections, chatSessions, activeChatId, backgroundMode, showImageInfo });
-    }, [activeChatId, backgroundMode, chatSessions, connections, historyPausedRef, nodes, projectId, projectLoaded, showImageInfo, updateProject]);
+        updateProject(projectId, { nodes, connections, chatSessions, activeChatId, backgroundMode, showImageInfo, layout: { gridSize } });
+    }, [activeChatId, backgroundMode, chatSessions, connections, gridSize, historyPausedRef, nodes, projectId, projectLoaded, showImageInfo, updateProject]);
 
     useEffect(() => {
         if (!projectLoaded) return;
@@ -196,6 +203,7 @@ export function useCanvasProjectLifecycle({
                 activeChatId,
                 backgroundMode,
                 showImageInfo,
+                layout: { gridSize },
                 viewport: viewportRef.current,
                 directorScenes: currentProject?.directorScenes || [],
             });
@@ -211,7 +219,7 @@ export function useCanvasProjectLifecycle({
             const detail = error instanceof Error ? error.message : "未知错误";
             message.warning(`本地画布布局已保存，云端同步失败：${detail}`);
         }
-    }, [activeChatId, backgroundMode, chatSessions, connectionsRef, currentProject?.directorScenes, message, nodesRef, projectId, showImageInfo, updateProject, viewportRef]);
+    }, [activeChatId, backgroundMode, chatSessions, connectionsRef, currentProject?.directorScenes, gridSize, message, nodesRef, projectId, showImageInfo, updateProject, viewportRef]);
 
     const clearCanvasFiles = useCallback(() => {
         cleanupCanvasFiles({ projectId, nodes: [], chatSessions: [] });

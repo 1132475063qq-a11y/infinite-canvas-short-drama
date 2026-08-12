@@ -954,6 +954,9 @@ func (r *Repository) DeleteProject(userID string, id string) error {
 		if err := tx.Where("project_id = ?", id).Delete(&model.Shot{}).Error; err != nil {
 			return err
 		}
+		if err := tx.Where("project_id = ?", id).Delete(&model.Scene{}).Error; err != nil {
+			return err
+		}
 		instanceIDs := tx.Model(&model.WorkflowInstance{}).Select("id").Where("project_id = ?", id)
 		stepIDs := tx.Model(&model.WorkflowStepInstance{}).Select("id").Where("workflow_instance_id IN (?)", instanceIDs)
 		if err := tx.Where("workflow_step_id IN (?)", stepIDs).Delete(&model.WorkflowStepTask{}).Error; err != nil {
@@ -1054,6 +1057,9 @@ func (r *Repository) DeleteProjectUnit(projectID string, id string) error {
 			return err
 		}
 		if err := tx.Where("project_id = ? AND unit_id = ?", projectID, id).Delete(&model.Shot{}).Error; err != nil {
+			return err
+		}
+		if err := tx.Where("project_id = ? AND unit_id = ?", projectID, id).Delete(&model.Scene{}).Error; err != nil {
 			return err
 		}
 		instanceIDs := tx.Model(&model.WorkflowInstance{}).Select("id").Where("project_id = ? AND unit_id = ?", projectID, id)
@@ -1280,12 +1286,33 @@ func (r *Repository) ProjectShots(projectID string) ([]model.Shot, error) {
 	return shots, err
 }
 
+func (r *Repository) ProjectScenes(projectID string) ([]model.Scene, error) {
+	var scenes []model.Scene
+	err := r.db.Where("project_id = ?", projectID).Order("position asc, created_at asc").Find(&scenes).Error
+	return scenes, err
+}
+
+func (r *Repository) SceneForProject(projectID string, sceneID string) (*model.Scene, error) {
+	var scene model.Scene
+	if err := r.db.First(&scene, "id = ? AND project_id = ?", sceneID, projectID).Error; err != nil {
+		return nil, err
+	}
+	return &scene, nil
+}
+
+func (r *Repository) SaveScene(scene *model.Scene, create bool) error {
+	if create {
+		return r.db.Create(scene).Error
+	}
+	return r.db.Save(scene).Error
+}
+
 func (r *Repository) SaveShot(shot *model.Shot, create bool) error {
 	if create {
 		return r.db.Create(shot).Error
 	}
 	return r.db.Model(&model.Shot{}).Where("id = ? AND project_id = ?", shot.ID, shot.ProjectID).Updates(map[string]any{
-		"unit_id": shot.UnitID, "title": shot.Title, "description": shot.Description, "position": shot.Position,
+		"unit_id": shot.UnitID, "scene_id": shot.SceneID, "title": shot.Title, "description": shot.Description, "position": shot.Position,
 		"duration_ms": shot.DurationMs, "status": shot.Status, "updated_at": shot.UpdatedAt,
 	}).Error
 }

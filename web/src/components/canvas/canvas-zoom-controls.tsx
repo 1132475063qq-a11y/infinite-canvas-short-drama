@@ -1,12 +1,13 @@
 import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useRef, useState, type RefObject } from "react";
-import { Compass, Focus, HelpCircle, Minus, Plus } from "lucide-react";
+import { Compass, EyeOff, Focus, HelpCircle, Minus, Plus, ScanLine, Workflow } from "lucide-react";
 
 import { FloatingDock, type FloatingDockEntry } from "@/components/ui/aceternity/floating-dock";
 import { aceternityMotion } from "@/lib/aceternity-motion";
 import { canvasDockStyle } from "@/lib/canvas/canvas-aceternity-style";
 import { canvasThemes } from "@/lib/canvas-theme";
 import { subscribeCanvasViewportPreview } from "@/lib/canvas/canvas-live-viewport";
+import type { CanvasConnectionVisibilityMode } from "@/lib/canvas/canvas-connection-visibility";
 import { useThemeStore } from "@/stores/use-theme-store";
 
 type CanvasZoomControlsProps = {
@@ -15,13 +16,15 @@ type CanvasZoomControlsProps = {
     onReset: () => void;
     isMiniMapOpen: boolean;
     onToggleMiniMap: () => void;
+    connectionVisibilityMode?: CanvasConnectionVisibilityMode;
+    onCycleConnectionVisibility?: () => void;
     onOpenShortcuts: () => void;
     containerRef?: RefObject<HTMLDivElement | null>;
 };
 
 const QUICK_ZOOM_LEVELS = [0.25, 0.5, 1, 2] as const;
 
-export function CanvasZoomControls({ scale, onScaleChange, onReset, isMiniMapOpen, onToggleMiniMap, onOpenShortcuts, containerRef }: CanvasZoomControlsProps) {
+export function CanvasZoomControls({ scale, onScaleChange, onReset, isMiniMapOpen, onToggleMiniMap, connectionVisibilityMode, onCycleConnectionVisibility, onOpenShortcuts, containerRef }: CanvasZoomControlsProps) {
     const theme = canvasThemes[useThemeStore((state) => state.theme)];
     const rootRef = useRef<HTMLDivElement>(null);
     const liveScaleRef = useRef(scale);
@@ -68,8 +71,22 @@ export function CanvasZoomControls({ scale, onScaleChange, onReset, isMiniMapOpe
         onScaleChange(clampedScale);
     }
 
+    const connectionVisibilityItems: FloatingDockEntry[] =
+        connectionVisibilityMode && onCycleConnectionVisibility
+            ? [
+                  {
+                      id: "connection-visibility",
+                      label: connectionVisibilityMode === "all" ? "连线：全部（点击隐藏）" : connectionVisibilityMode === "focus" ? "连线：聚焦（点击显示全部）" : "连线：隐藏（点击聚焦）",
+                      icon: connectionVisibilityMode === "all" ? <Workflow /> : connectionVisibilityMode === "focus" ? <ScanLine /> : <EyeOff />,
+                      active: connectionVisibilityMode !== "all",
+                      onClick: onCycleConnectionVisibility,
+                  },
+              ]
+            : [];
+
     const items: FloatingDockEntry[] = [
         { id: "zoom-minimap", label: isMiniMapOpen ? "关闭小地图" : "打开小地图", icon: <Compass />, active: isMiniMapOpen, onClick: onToggleMiniMap },
+        ...connectionVisibilityItems,
         { id: "zoom-fit", label: "适应全部内容", icon: <Focus />, onClick: onReset },
         { kind: "separator", id: "zoom-separator" },
         { id: "zoom-out", label: "缩小画布", icon: <Minus />, onClick: () => commitScale(liveScaleRef.current - 0.1) },
