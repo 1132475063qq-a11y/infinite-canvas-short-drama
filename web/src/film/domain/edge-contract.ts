@@ -1,6 +1,7 @@
-import type { CanvasNodeData } from "@/types/canvas";
+import type { CanvasConnection, CanvasNodeData } from "@/types/canvas";
 
 import { isFilmProductionProjection } from "./node-projection";
+import { areFilmPortSchemasCompatible, filmInputPortHasCapacity, findFilmPortSchema } from "./port-schema";
 import type { FilmConnectionPorts, FilmEdgeType, FilmNodeKind, FilmNodePort } from "./types";
 
 const REFERENCE_KINDS = new Set<FilmNodeKind>(["character", "location", "prop"]);
@@ -10,6 +11,10 @@ type FilmConnectionSemantic = { edgeType: FilmEdgeType; filmPorts: FilmConnectio
 export type FilmConnectionValidation =
     | { allowed: true; semantic?: FilmConnectionSemantic }
     | { allowed: false; reason: string };
+
+export type FilmConnectionValidationContext = {
+    connections?: readonly CanvasConnection[];
+};
 
 type FilmConnectionRule = FilmConnectionSemantic & { from: FilmNodeKind; to: FilmNodeKind };
 
@@ -47,12 +52,12 @@ const RULES_BY_PAIR = new Map(FILM_CONNECTION_RULES.map((item) => [`${item.from}
 
 export function filmOutputPort(kind: FilmNodeKind): FilmNodePort {
     if (["project", "story", "scene"].includes(kind)) return "scene_context";
-    if (["script", "shot"].includes(kind)) return "shot_contract";
-    if (REFERENCE_KINDS.has(kind)) return "asset_reference";
-    if (kind === "acting") return "acting_direction";
+    if (["script", "storyboard", "shot"].includes(kind)) return "shot_contract";
+    if (["character", "character_state", "location", "location_view", "prop", "voice_profile", "shot_reference_pack"].includes(kind)) return "asset_reference";
+    if (["acting", "acting_profile", "scene_acting"].includes(kind)) return "acting_direction";
     if (kind === "prompt_pack") return "prompt";
-    if (kind === "generation") return "generation_job";
-    if (kind === "result") return "result";
+    if (["generation", "generation_attempt"].includes(kind)) return "generation_job";
+    if (["result", "delivery"].includes(kind)) return "result";
     if (kind === "qc") return "qc_decision";
     if (kind === "retry") return "retry_request";
     return "generic";
@@ -60,13 +65,15 @@ export function filmOutputPort(kind: FilmNodeKind): FilmNodePort {
 
 export function filmInputPort(kind: FilmNodeKind): FilmNodePort {
     if (["scene", "shot"].includes(kind)) return "scene_context";
-    if (REFERENCE_KINDS.has(kind)) return "asset_reference";
-    if (kind === "acting") return "acting_direction";
+    if (["character_state", "location_view", "shot_reference_pack"].includes(kind)) return "asset_reference";
+    if (["acting", "scene_acting"].includes(kind)) return "acting_direction";
+    if (kind === "storyboard") return "shot_contract";
     if (kind === "prompt_pack") return "shot_contract";
     if (kind === "generation") return "prompt";
-    if (kind === "result") return "generation_job";
+    if (["generation_attempt", "result"].includes(kind)) return "generation_job";
     if (kind === "qc") return "result";
     if (kind === "retry") return "qc_decision";
+    if (kind === "delivery") return "result";
     return "generic";
 }
 
@@ -84,7 +91,7 @@ export function filmEdgeType(from: FilmNodeKind, to: FilmNodeKind): FilmEdgeType
  * Legacy or mixed nodes keep the host canvas' free-form connection behavior.
  * Only two database-backed Film projections enter the production rule matrix.
  */
-export function validateFilmConnection(from?: CanvasNodeData, to?: CanvasNodeData): FilmConnectionValidation {
+export function validateFilmConnection(from?: CanvasNodeData, to?: CanvasNodeData, context: FilmConnectionValidationContext = {}): FilmConnectionValidation {
     if (!isFilmProductionProjection(from) || !isFilmProductionProjection(to)) return { allowed: true };
     if (from.domainRef?.projectId !== to.domainRef?.projectId) {
         return { allowed: false, reason: "影视生产节点不能跨项目连接" };
@@ -95,6 +102,14 @@ export function validateFilmConnection(from?: CanvasNodeData, to?: CanvasNodeDat
     const ruleMatch = RULES_BY_PAIR.get(`${from.filmKind}->${to.filmKind}`);
     if (!ruleMatch) {
         return { allowed: false, reason: `${filmKindLabel(from.filmKind)}不能连接到${filmKindLabel(to.filmKind)}` };
+    }
+    const outputPort = findFilmPortSchema(from.filmKind, ruleMatch.filmPorts.from, "output");
+    const inputPort = findFilmPortSchema(to.filmKind, ruleMatch.filmPorts.to, "input");
+    if (!outputPort || !inputPort || !areFilmPortSchemasCompatible(outputPort, inputPort)) {
+        return { allowed: false, reason: "影视端口类型不兼容" };
+    }
+    if (context.connections && !filmInputPortHasCapacity(to, inputPort, context.connections)) {
+        return { allowed: false, reason: `${inputPort.role} 只允许一个输入连接` };
     }
     return {
         allowed: true,
@@ -120,17 +135,27 @@ function filmKindLabel(kind: FilmNodeKind) {
         story: "故事",
         script: "剧本",
         scene: "场景",
-        shot: "镜头",
         character: "角色",
+        character_state: "角色状态",
         location: "场地",
+        location_view: "场地视图",
         prop: "道具",
+        voice_profile: "声音档案",
         acting: "表演",
+        acting_profile: "表演档案",
+        scene_acting: "场次表演",
+        storyboard: "分镜",
+        shot: "镜头",
+        shot_reference_pack: "镜头参考包",
         prompt_pack: "提示词包",
         generation: "生成任务",
+        generation_attempt: "生成尝试",
         result: "生成结果",
         qc: "质检",
+        continuity: "连续性",
         retry: "重试",
         needs_you: "需要人工处理",
         agent_task: "Agent 任务",
+        delivery: "交付",
     } satisfies Record<FilmNodeKind, string>)[kind];
 }

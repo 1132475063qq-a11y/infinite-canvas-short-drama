@@ -17,17 +17,21 @@ The SQLite database and its backup are deliberately excluded from Git: they can 
 
 ## Canvas document baseline
 
-`CanvasProjectDocument` is a backwards-compatible document stored in `CanvasProject.PayloadJSON` and local canvas storage. Its v2 minimum contract is:
+`CanvasProjectDocument` is a backwards-compatible document stored in `CanvasProject.PayloadJSON` and local canvas storage. Its canonical v2 contract is:
 
 ```ts
 {
   schemaVersion: 2,
+  projectId?: string,
   layout: { gridSize: 8 },
   nodes: CanvasNodeData[],
+  connections: CanvasConnection[],
+  viewport: ViewportTransform,
+  groups: CanvasDocumentGroup[],
 }
 ```
 
-Film semantic fields remain optional on `CanvasNodeData` so old documents open unchanged. `migrateCanvasProjectDocument()` upgrades film-compatible legacy nodes without replacing the existing canvas engine.
+Film semantic fields remain optional on `CanvasNodeData` so old documents open unchanged. `migrateCanvasProjectDocument()` upgrades film-compatible legacy nodes, accepts legacy `edges` and `layout.grid` aliases, and normalizes them to `connections` and `layout.gridSize` without replacing the existing canvas engine.
 
 ## Golden fixture
 

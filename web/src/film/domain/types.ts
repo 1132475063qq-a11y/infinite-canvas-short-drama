@@ -1,20 +1,33 @@
-export type FilmNodeKind =
-    | "project"
-    | "story"
-    | "script"
-    | "scene"
-    | "shot"
-    | "character"
-    | "location"
-    | "prop"
-    | "acting"
-    | "prompt_pack"
-    | "generation"
-    | "result"
-    | "qc"
-    | "retry"
-    | "needs_you"
-    | "agent_task";
+export const FILM_NODE_KINDS = [
+    "project",
+    "story",
+    "script",
+    "scene",
+    "character",
+    "character_state",
+    "location",
+    "location_view",
+    "prop",
+    "voice_profile",
+    "acting",
+    "acting_profile",
+    "scene_acting",
+    "storyboard",
+    "shot",
+    "shot_reference_pack",
+    "prompt_pack",
+    "generation",
+    "generation_attempt",
+    "result",
+    "qc",
+    "continuity",
+    "retry",
+    "needs_you",
+    "agent_task",
+    "delivery",
+] as const;
+
+export type FilmNodeKind = (typeof FILM_NODE_KINDS)[number];
 
 export type FilmNodeDomainRef = {
     projectId: string;
@@ -46,6 +59,25 @@ export type FilmNodeLayout = {
 
 export type FilmEdgeType = "dependency" | "reference" | "derivation" | "continuity" | "authority";
 
+export type FilmPortType =
+    | "story"
+    | "script"
+    | "scene"
+    | "character"
+    | "location"
+    | "prop"
+    | "acting"
+    | "reference"
+    | "prompt"
+    | "image"
+    | "video"
+    | "audio"
+    | "generation"
+    | "qc"
+    | "continuity"
+    | "decision"
+    | "artifact";
+
 // Film ports describe production meaning. They deliberately sit beside the canvas
 // renderer handles so the existing free-form connection UI stays backwards compatible.
 export type FilmNodePort =
@@ -59,6 +91,16 @@ export type FilmNodePort =
     | "qc_decision"
     | "retry_request"
     | "generic";
+
+export type FilmPortSchema = {
+    id: FilmNodePort;
+    direction: "input" | "output";
+    type: FilmPortType;
+    role: string;
+    required: boolean;
+    multiple: boolean;
+    accepts: readonly FilmPortType[];
+};
 
 export type FilmConnectionPorts = {
     from: FilmNodePort;
@@ -77,5 +119,5 @@ export function createFilmNodeState(patch: Partial<FilmNodeState> = {}): FilmNod
 }
 
 export function isFilmNodeKind(value: unknown): value is FilmNodeKind {
-    return typeof value === "string" && ["project", "story", "script", "scene", "shot", "character", "location", "prop", "acting", "prompt_pack", "generation", "result", "qc", "retry", "needs_you", "agent_task"].includes(value);
+    return typeof value === "string" && (FILM_NODE_KINDS as readonly string[]).includes(value);
 }

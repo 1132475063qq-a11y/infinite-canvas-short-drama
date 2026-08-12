@@ -4,7 +4,7 @@ import { persist, type PersistStorage, type StorageValue } from "zustand/middlew
 import { nanoid } from "nanoid";
 import { localForageStorage } from "@/lib/localforage-storage";
 import type { CanvasBackgroundMode } from "@/lib/canvas-theme";
-import { migrateCanvasProjectDocument } from "@/film/domain/document-migration";
+import { deriveCanvasDocumentGroups, migrateCanvasProjectDocument } from "@/film/domain/document-migration";
 import type { CanvasAssistantSession, CanvasConnection, CanvasNodeData, CanvasProjectDocument, ViewportTransform } from "@/types/canvas";
 import type { DirectorScene } from "@/types/director";
 import type { TimelineProject } from "@/types/timeline";
@@ -34,7 +34,7 @@ type CanvasStore = {
     renameProject: (id: string, title: string) => void;
     deleteProjects: (ids: string[]) => void;
     replaceProjects: (projects: CanvasProject[]) => void;
-    updateProject: (id: string, patch: Partial<Pick<CanvasProject, "projectId" | "schemaVersion" | "layout" | "nodes" | "connections" | "chatSessions" | "activeChatId" | "backgroundMode" | "showImageInfo" | "viewport" | "directorScenes" | "timeline">>) => void;
+    updateProject: (id: string, patch: Partial<Pick<CanvasProject, "projectId" | "schemaVersion" | "layout" | "nodes" | "connections" | "groups" | "chatSessions" | "activeChatId" | "backgroundMode" | "showImageInfo" | "viewport" | "directorScenes" | "timeline">>) => void;
 };
 
 const initialViewport: ViewportTransform = { x: 0, y: 0, k: 1 };
@@ -98,6 +98,7 @@ export const useCanvasStore = create<CanvasStore>()(
                     updatedAt: now,
                     nodes: [],
                     connections: [],
+                    groups: [],
                     chatSessions: [],
                     activeChatId: null,
                     backgroundMode: "dots",
@@ -120,6 +121,7 @@ export const useCanvasStore = create<CanvasStore>()(
                     updatedAt: now,
                     nodes: source.nodes || [],
                     connections: source.connections || [],
+                    groups: deriveCanvasDocumentGroups(source.nodes || [], source.groups || []),
                     chatSessions: source.chatSessions || [],
                     activeChatId: source.activeChatId || null,
                     backgroundMode: source.backgroundMode || "dots",
@@ -145,7 +147,16 @@ export const useCanvasStore = create<CanvasStore>()(
             replaceProjects: (projects) => set({ projects: projects.map((project) => migrateCanvasProjectDocument(project)) }),
             updateProject: (id, patch) =>
                 set((state) => ({
-                    projects: state.projects.map((project) => (project.id === id ? { ...project, ...patch, updatedAt: new Date().toISOString() } : project)),
+                    projects: state.projects.map((project) => {
+                        if (project.id !== id) return project;
+                        const nodes = patch.nodes || project.nodes;
+                        return {
+                            ...project,
+                            ...patch,
+                            groups: patch.groups || (patch.nodes ? deriveCanvasDocumentGroups(nodes, project.groups) : project.groups),
+                            updatedAt: new Date().toISOString(),
+                        };
+                    }),
                 })),
         }),
         {

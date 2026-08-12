@@ -4,7 +4,9 @@ import { migrateCanvasProjectDocument } from "../src/film/domain/document-migrat
 import { describeFilmConnection, validateFilmConnection } from "../src/film/domain/edge-contract";
 import { moveFilmNodeProjection } from "../src/film/domain/node-positioning";
 import { isFilmProductionProjection } from "../src/film/domain/node-projection";
+import { FILM_NODE_PORT_SCHEMAS, areFilmPortSchemasCompatible, findFilmPortSchema, missingRequiredFilmInputPorts } from "../src/film/domain/port-schema";
 import { formatFilmSceneTitle, hasFilmSceneProjection, normalizeFilmSceneTitle } from "../src/film/domain/scene-projection";
+import { FILM_NODE_KINDS } from "../src/film/domain/types";
 import { applyFilmAutoLayout, applyFilmResultLayout } from "../src/lib/canvas/layout/layout-engine";
 import { canvasNodeRect, canvasRectsOverlap } from "../src/lib/canvas/layout/collision";
 import { reconcileFilmSceneProjections } from "../src/lib/canvas/layout/film-scene-projection";
@@ -162,6 +164,37 @@ describe("Film layout", () => {
 });
 
 describe("Film semantic contracts", () => {
+    test("FilmNodeKind v2 与每种节点的端口合同完整冻结", () => {
+        // 规划枚举示例漏了 Phase 4 明确要求的 acting；保留现有 acting 并补齐细分类型。
+        expect(FILM_NODE_KINDS).toHaveLength(26);
+        expect(FILM_NODE_KINDS).toContain("acting");
+        expect(FILM_NODE_KINDS).toContain("character_state");
+        expect(FILM_NODE_KINDS).toContain("generation_attempt");
+        expect(FILM_NODE_KINDS).toContain("continuity");
+        expect(FILM_NODE_KINDS).toContain("delivery");
+        FILM_NODE_KINDS.forEach((kind) => {
+            expect(FILM_NODE_PORT_SCHEMAS[kind].length).toBeGreaterThan(0);
+            FILM_NODE_PORT_SCHEMAS[kind].forEach((port) => {
+                expect(typeof port.role).toBe("string");
+                expect(typeof port.required).toBe("boolean");
+                expect(typeof port.multiple).toBe("boolean");
+                expect(Array.isArray(port.accepts)).toBe(true);
+            });
+        });
+    });
+
+    test("端口类型、必填输入和单连接容量形成可执行合同", () => {
+        const scene = { ...filmNode("scene-01", "scene"), domainRef: { projectId: "project-01", sceneId: "scene-01" } };
+        const shot = { ...filmNode("shot-001", "shot"), domainRef: { projectId: "project-01", sceneId: "scene-01", shotId: "shot-001" } };
+        const sceneOutput = findFilmPortSchema("scene", "scene_context", "output");
+        const shotInput = findFilmPortSchema("shot", "scene_context", "input");
+
+        expect(sceneOutput && shotInput && areFilmPortSchemasCompatible(sceneOutput, shotInput)).toBe(true);
+        expect(missingRequiredFilmInputPorts(shot, [])).toEqual(expect.arrayContaining([expect.objectContaining({ id: "scene_context" })]));
+        expect(missingRequiredFilmInputPorts(shot, [{ id: "scene-shot", fromNodeId: scene.id, toNodeId: shot.id, filmPorts: { from: "scene_context", to: "scene_context" } }])).toEqual([]);
+        expect(validateFilmConnection(scene, shot, { connections: [{ id: "existing", fromNodeId: scene.id, toNodeId: shot.id, filmPorts: { from: "scene_context", to: "scene_context" } }] })).toEqual({ allowed: false, reason: "scene_context 只允许一个输入连接" });
+    });
+
     test("影视节点连线带有独立于画布句柄的端口和边语义", () => {
         const scene = { ...filmNode("scene-01", "scene"), type: CanvasNodeType.Frame, domainRef: { projectId: "project-01", sceneId: "scene-01" } };
         const shot = { ...filmNode("shot-001", "shot"), domainRef: { projectId: "project-01", sceneId: "scene-01", shotId: "shot-001" } };

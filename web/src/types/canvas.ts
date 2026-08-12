@@ -315,11 +315,28 @@ export type CanvasConnection = {
     toAnchorRatio?: number;
 };
 
-export type CanvasProjectDocument = {
-    schemaVersion?: number;
-    layout?: { gridSize: CanvasGridSize };
-    nodes: CanvasNodeData[];
+export const CANVAS_DOCUMENT_SCHEMA_VERSION = 2;
+
+export type CanvasDocumentGroup = {
+    id: string;
+    kind: "frame" | "scene" | "custom";
+    nodeIds: string[];
+    title?: string;
+    collapsed?: boolean;
 };
+
+export type CanvasDocumentV2 = {
+    schemaVersion: number;
+    projectId?: string;
+    layout: { gridSize: CanvasGridSize };
+    nodes: CanvasNodeData[];
+    connections: CanvasConnection[];
+    viewport: ViewportTransform;
+    groups: CanvasDocumentGroup[];
+};
+
+// Keep the host-facing name while the document contract is upgraded in place.
+export type CanvasProjectDocument = CanvasDocumentV2;
 
 export type CanvasDisplayConnection = {
     connection: CanvasConnection;

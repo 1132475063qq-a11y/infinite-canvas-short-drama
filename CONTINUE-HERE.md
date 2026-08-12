@@ -52,7 +52,7 @@ codex/phase1-film-semantic
 - 已有 Golden Fixture 自动测试。
 - 尚缺：独立数据库 schema 导出、恢复说明、数据库支持的《寄生广告》真实 Golden Project。
 
-### Phase 1：Film Semantic Layer（基础完成，契约仍需补强）
+### Phase 1：Film Semantic Layer（基础完成）
 
 已完成：
 
@@ -65,6 +65,18 @@ codex/phase1-film-semantic
 - 后端 Scene/Shot/Asset ID 绑定
 - 右侧基础 Film Inspector
 - 老 Canvas 节点兼容
+
+### Phase 1.5：语义契约冻结（完成）
+
+已完成：
+
+- 冻结 26 种 `FilmNodeKind v2`；保留规划 Phase 4 明确需要的 `acting`，并补齐细分节点类型。
+- 新增穷举的 `FilmPortSchema`：direction、type、role、required、multiple、accepts。
+- Typed Connection 在原有影视规则矩阵上增加端口兼容和单输入容量校验，旧自由连接继续兼容。
+- 统一 `CanvasDocumentV2`：schemaVersion、projectId、nodes、connections、viewport、groups、layout.gridSize。
+- 旧 `edges`、`layout.grid` 和缺省字段可迁移为唯一 V2 表达；未知未来节点和更高 schemaVersion 保留。
+- Store 创建、导入、恢复、节点更新及项目画布 fallback 已接入 V2 字段和 group projection。
+- 新增 `CanvasDocumentV2` 迁移测试、端口合同测试，并将 Golden Fixture 升级为完整 V2 文档。
 
 核心目录：
 
@@ -109,13 +121,21 @@ e77c747 fix(film): preserve legacy nodes and clean scene records
 
 ## 4. 已验证范围
 
-最近一次完整验证结果：
+最近一次已提交版本的完整验证结果：
 
 - Web 自动测试：70/70 通过。
 - TypeScript typecheck：通过。
 - Web production build：通过。
 - 浏览器实测：Scene Lane、`SC01-SH001 · Shot Contract`、Grid 8→16、刷新持久化、恢复 8 后再次刷新持久化。
 - 浏览器控制台只观察到已有 Ant Design deprecated 警告，没有本阶段新增运行错误。
+
+Phase 1.5 当前工作区验证（2026-08-12）：
+
+- Web 自动测试：76/76 通过。
+- TypeScript typecheck：通过。
+- Web production build：通过。
+- `git diff --check`：通过。
+- 本阶段没有修改 UI，因此没有新增浏览器交互验收；此前 Phase 1/2 浏览器结果不等于 Phase 1.5 自动测试结果。
 
 常用验证命令：
 
@@ -158,7 +178,7 @@ LOCAL_UID=$(id -u) LOCAL_GID=$(id -g) docker compose -f docker-compose.dev.yml u
 
 这些属于后续阶段，不得提前宣称完成。
 
-## 6. 下一步：先做 Phase 1.5，再做 Phase 3
+## 6. 下一步：Phase 3 UI Shell
 
 不要直接进入 Provider Gateway。最新版详细规划明确规定：
 
@@ -168,25 +188,11 @@ Phase 4 = Film Nodes
 Phase 5 = Provider Gateway v2
 ```
 
-### Phase 1.5：语义契约冻结
-
-目标是解决已经识别出的模型差异，不进行大规模 UI 重做。
-
-1. 冻结完整 `FilmNodeKind v2`。
-   - 当前缺少 `character_state`、`location_view`、`voice_profile`、`acting_profile`、`scene_acting`、`storyboard`、`shot_reference_pack`、`generation_attempt`、`continuity`、`delivery`。
-   - 可以先加入规范类型和兼容解析，不要求同时完成所有 renderer。
-2. 将简化的 `FilmNodePort` 升级为正式 `FilmPortSchema`。
-   - direction、role、required、multiple、accepts。
-   - 保持旧自由连接向后兼容。
-3. 统一 `CanvasDocumentV2` 契约。
-   - schemaVersion、projectId、nodes、connections/edges、viewport、groups、layout。
-   - 明确 `gridSize` 命名，不进行无迁移字段替换。
-4. 增加旧 CanvasDocument → V2 的 normalize/migration 测试。
-5. 补 Phase 0 的数据库 schema 快照和恢复说明。
+Phase 1.5 已通过自动验收，下一会话不要重做模型。Phase 0 仍需另补数据库 schema 快照和恢复说明。
 
 ### Phase 3：UI Shell
 
-Phase 1.5 验收通过后实现：
+下一阶段实现：
 
 - 完整 Left Project Navigator
 - Top Project Production Status
@@ -226,6 +232,6 @@ Phase 1.5 验收通过后实现：
 请先完整读取 CONTINUE-HERE.md 和
 /Users/xiangyuqin/Downloads/短剧AI无限画布_Production_Canvas_v2_超详细发展规划.md。
 检查当前分支、Git 状态和最近提交，不要重做 Phase 1/Phase 2。
-先只执行 Phase 1.5 语义契约冻结：FilmNodeKind v2、FilmPortSchema、CanvasDocumentV2 与兼容迁移测试。
-修改前先输出本轮文件范围，完成后运行 test、typecheck、build，并如实区分自动验证与浏览器验证。
+Phase 1.5 已完成并通过 76/76 自动测试，不要重做。
+下一步只进入 Phase 3 UI Shell，先输出本轮文件范围，并如实区分自动验证与浏览器验证。
 ```

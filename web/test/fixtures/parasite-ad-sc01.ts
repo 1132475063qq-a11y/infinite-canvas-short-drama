@@ -10,6 +10,7 @@ export const parasiteAdSc01Fixture = {
     expectedReferenceAssets: ["大头 Base", "小皮 Base", "富豪", "Clinic Location", "Patient Chair", "Bridge Chair", "VR Helmet", "Console"],
     document: {
         schemaVersion: 2,
+        projectId,
         layout: { gridSize: 8 },
         nodes: [
             {
@@ -37,5 +38,8 @@ export const parasiteAdSc01Fixture = {
                 height: 180,
             },
         ] satisfies CanvasNodeData[],
+        connections: [],
+        viewport: { x: 0, y: 0, k: 1 },
+        groups: [],
     } satisfies CanvasProjectDocument,
 } as const;
