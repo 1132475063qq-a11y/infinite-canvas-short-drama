@@ -9,6 +9,7 @@ import { createCanvasDrawingFromImage } from "@/lib/canvas/canvas-drawing-storag
 import { isDrawingEngineAvailable, type CanvasDrawingEngine } from "@/lib/canvas/canvas-drawing-engine";
 import { isFrameNode, isNodeHiddenByCollapsedFrame } from "@/lib/canvas/canvas-frame";
 import { validateFilmConnection } from "@/film/domain/edge-contract";
+import { isFilmProductionProjection } from "@/film/domain/node-projection";
 import { useUserStore } from "@/stores/use-user-store";
 import { CanvasNodeType, type CanvasConnection, type CanvasNodeData, type ConnectionHandle, type ContextMenuState, type Position, type ViewportTransform } from "@/types/canvas";
 
@@ -222,7 +223,7 @@ export function useCanvasConnectionController({
         let bestPriority = Number.POSITIVE_INFINITY;
 
         [...nodesRef.current]
-            .filter((node) => !isHiddenBatchChild(node, nodesRef.current) && !isNodeHiddenByCollapsedFrame(node, nodesRef.current) && !isFrameNode(node))
+            .filter((node) => !isHiddenBatchChild(node, nodesRef.current) && !isNodeHiddenByCollapsedFrame(node, nodesRef.current) && (!isFrameNode(node) || isFilmProductionProjection(node)))
             .reverse()
             .forEach((node) => {
                 const scrollTop = scriptScrollTopById[node.id] || 0;

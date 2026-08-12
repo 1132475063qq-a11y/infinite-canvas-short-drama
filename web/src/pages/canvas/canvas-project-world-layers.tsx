@@ -110,6 +110,9 @@ export function CanvasProjectWorldLayers(props: CanvasProjectWorldLayersProps) {
                         onToggleCollapsed={props.onToggleFrame}
                         onTitleChange={props.onNodeTitleChange}
                         onContextMenu={props.onNodeContextMenu}
+                        onHoverStart={props.onNodeHoverStart}
+                        onHoverEnd={props.onNodeHoverEnd}
+                        onConnectStart={props.onConnectStart}
                     />
                 ) : (
                     <CanvasNode

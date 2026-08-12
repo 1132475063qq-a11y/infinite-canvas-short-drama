@@ -3,6 +3,8 @@ import type { MouseEvent as ReactMouseEvent } from "react";
 import { ChevronDown, ChevronRight, Video } from "lucide-react";
 
 import { CometCard } from "@/components/ui/aceternity/comet-card";
+import { CanvasConnectionSideRail } from "@/components/canvas/canvas-connection-side-rail";
+import { isFilmProductionProjection } from "@/film/domain/node-projection";
 import { FRAME_HEADER_HEIGHT, FRAME_PADDING } from "@/lib/canvas/canvas-frame";
 import { canvasThemes, type CanvasTheme } from "@/lib/canvas-theme";
 import { useThemeStore } from "@/stores/use-theme-store";
@@ -25,6 +27,7 @@ export const CanvasFrameNode = React.memo(function CanvasFrameNode({
     readOnly = false,
     onHoverStart,
     onHoverEnd,
+    onConnectStart,
 }: {
     data: CanvasNodeData;
     dragOffset?: Position;
@@ -40,10 +43,12 @@ export const CanvasFrameNode = React.memo(function CanvasFrameNode({
     readOnly?: boolean;
     onHoverStart?: (nodeId: string) => void;
     onHoverEnd?: (nodeId: string) => void;
+    onConnectStart?: (event: React.PointerEvent, nodeId: string, handleType: "source" | "target", handleId?: string, anchorRatio?: number) => void;
 }) {
     const theme = canvasThemes[useThemeStore((state) => state.theme)];
     const collapsed = Boolean(data.metadata?.frame?.collapsed);
     const [editing, setEditing] = useState(false);
+    const [hovered, setHovered] = useState(false);
     const [title, setTitle] = useState(data.title);
     const resizeRef = useRef({
         active: false,
@@ -153,8 +158,14 @@ export const CanvasFrameNode = React.memo(function CanvasFrameNode({
                 onToggleCollapsed(data.id);
             }}
             onContextMenu={(event) => onContextMenu(event, data.id)}
-            onMouseEnter={() => onHoverStart?.(data.id)}
-            onMouseLeave={() => onHoverEnd?.(data.id)}
+            onMouseEnter={() => {
+                setHovered(true);
+                onHoverStart?.(data.id);
+            }}
+            onMouseLeave={() => {
+                setHovered(false);
+                onHoverEnd?.(data.id);
+            }}
         >
             {/* 帧节点同样禁用指针跟随 3D 位移，hover 使用 CSS 静态抬升 */}
             <CometCard
@@ -227,6 +238,12 @@ export const CanvasFrameNode = React.memo(function CanvasFrameNode({
                     <ResizeHandle corner="top-right" scale={scale} theme={theme} onMouseDown={startResize} />
                     <ResizeHandle corner="bottom-left" scale={scale} theme={theme} onMouseDown={startResize} />
                     <ResizeHandle corner="bottom-right" scale={scale} theme={theme} onMouseDown={startResize} />
+                </>
+            ) : null}
+            {!readOnly && !data.metadata?.locked && isFilmProductionProjection(data) && onConnectStart ? (
+                <>
+                    <CanvasConnectionSideRail side="left" scale={scale} visible={hovered || isSelected} theme={theme} onPointerDown={(event, anchorRatio) => onConnectStart(event, data.id, "target", undefined, anchorRatio)} />
+                    <CanvasConnectionSideRail side="right" scale={scale} visible={hovered || isSelected} theme={theme} onPointerDown={(event, anchorRatio) => onConnectStart(event, data.id, "source", undefined, anchorRatio)} />
                 </>
             ) : null}
         </div>
