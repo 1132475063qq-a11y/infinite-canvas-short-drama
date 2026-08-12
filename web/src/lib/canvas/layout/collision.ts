@@ -1,6 +1,7 @@
 import type { CanvasNodeData, Position } from "@/types/canvas";
+import type { CanvasRect } from "./layout-types";
 
-export type CanvasRect = { x: number; y: number; width: number; height: number };
+export type { CanvasRect } from "./layout-types";
 
 export function canvasNodeRect(node: Pick<CanvasNodeData, "position" | "width" | "height">): CanvasRect {
     return { x: node.position.x, y: node.position.y, width: node.width, height: node.height };

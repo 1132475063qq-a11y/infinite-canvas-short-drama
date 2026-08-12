@@ -1,6 +1,7 @@
 import { formatFilmSceneTitle, hasFilmSceneProjection } from "@/film/domain/scene-projection";
 import { createFilmCanvasNode } from "@/lib/canvas/canvas-project-domain";
 import { CanvasNodeType, type CanvasNodeData } from "@/types/canvas";
+import type { CanvasGridSize } from "./layout-types";
 
 import { applyFilmAutoLayout } from "./layout-engine";
 import { FILM_SCENE_LANE } from "./film-layout-presets";
@@ -17,7 +18,7 @@ type SceneProjectionRecord = {
  * Scene projection. Rebuild the missing visual projection from the project
  * record, without creating another Scene or changing the underlying Shot.
  */
-export function reconcileFilmSceneProjections(nodes: CanvasNodeData[], projectId: string, scenes: SceneProjectionRecord[]): CanvasNodeData[] {
+export function reconcileFilmSceneProjections(nodes: CanvasNodeData[], projectId: string, scenes: SceneProjectionRecord[], gridSize: CanvasGridSize = 8): CanvasNodeData[] {
     const scenesById = new Map(scenes.map((scene) => [scene.id, scene]));
     const missingSceneIds = Array.from(
         new Set(
@@ -53,5 +54,5 @@ export function reconcileFilmSceneProjections(nodes: CanvasNodeData[], projectId
         return node;
     });
 
-    return applyFilmAutoLayout([...nodes, ...projectedScenes]);
+    return applyFilmAutoLayout([...nodes, ...projectedScenes], gridSize);
 }

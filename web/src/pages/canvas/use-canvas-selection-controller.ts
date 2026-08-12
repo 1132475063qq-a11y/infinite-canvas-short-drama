@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useRef, useState, type Dispatch, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type RefObject, type SetStateAction } from "react";
 
 import { applyCanvasSelectionPreview } from "@/lib/canvas/canvas-live-viewport";
-import { calculateNodeAlignment, createNodeAlignmentContext, isHiddenBatchChild, sameStringSet, type NodeAlignmentContext } from "@/lib/canvas/canvas-project-domain";
+import { isHiddenBatchChild, sameStringSet } from "@/lib/canvas/canvas-project-domain";
 import { applyFrameDrop, findFrameDropTarget, getFrameChildIds, isFrameNode, isNodeHiddenByCollapsedFrame } from "@/lib/canvas/canvas-frame";
+import { calculateNodeAlignment, createNodeAlignmentContext, type NodeAlignmentContext } from "@/lib/canvas/layout/alignment-guides";
+import type { CanvasAlignmentGuides, CanvasGridSize } from "@/lib/canvas/layout/layout-types";
 import { snapCanvasPosition } from "@/lib/canvas/layout/snap-engine";
 import { moveFilmNodeProjection } from "@/film/domain/node-positioning";
 import type { CanvasNodeData, Position, SelectionBox, ViewportTransform } from "@/types/canvas";
@@ -23,6 +25,7 @@ type UseCanvasSelectionControllerOptions = {
     onNodeClick: (node: CanvasNodeData) => void;
     onDeselect: () => void;
     onSelectionBoxEnd?: () => void;
+    gridSize: CanvasGridSize;
 };
 
 type DragState = {
@@ -61,10 +64,11 @@ export function useCanvasSelectionController({
     onNodeClick,
     onDeselect,
     onSelectionBoxEnd,
+    gridSize,
 }: UseCanvasSelectionControllerOptions) {
     const dragFrameRef = useRef<number | null>(null);
     const pendingNodeDragRef = useRef<Position>({ x: 0, y: 0 });
-    const pendingAlignmentGuidesRef = useRef<{ vertical?: number; horizontal?: number }>({});
+    const pendingAlignmentGuidesRef = useRef<CanvasAlignmentGuides>({});
     const alignmentContextRef = useRef<NodeAlignmentContext | null>(null);
     const lastFrameDropCheckRef = useRef(0);
     const selectionFrameRef = useRef<number | null>(null);
@@ -79,7 +83,7 @@ export function useCanvasSelectionController({
     const [frameDropTargetId, setFrameDropTargetId] = useState<string | null>(null);
     const [isNodeDragging, setIsNodeDragging] = useState(false);
     const [dragPreview, setDragPreview] = useState<{ x: number; y: number; nodeIds: Set<string> } | null>(null);
-    const [alignmentGuides, setAlignmentGuides] = useState<{ vertical?: number; horizontal?: number }>({});
+    const [alignmentGuides, setAlignmentGuides] = useState<CanvasAlignmentGuides>({});
 
     const cancelSelectionBox = useCallback(() => {
         selectionBoxRef.current = null;
@@ -195,7 +199,8 @@ export function useCanvasSelectionController({
         const rawOffset = { x: clientX == null ? 0 : (clientX - dragRef.current.startX) / currentViewport.k, y: clientY == null ? 0 : (clientY - dragRef.current.startY) / currentViewport.k };
         const initialPositions = dragRef.current.initialSelectedNodes;
         const initialById = new Map(initialPositions.map((item) => [item.id, item]));
-        const { x: dx, y: dy } = calculateNodeAlignment(alignmentContextRef.current, rawOffset, 7 / currentViewport.k).offset;
+        const aligned = calculateNodeAlignment(alignmentContextRef.current, rawOffset, 6 / currentViewport.k, 8 / currentViewport.k);
+        const { x: dx, y: dy } = aligned.offset;
 
         historyPausedRef.current = false;
         nodeDraggingRef.current = false;
@@ -209,8 +214,8 @@ export function useCanvasSelectionController({
                     const initial = initialById.get(node.id);
                     return initial
                         ? node.filmKind
-                            ? moveFilmNodeProjection(node, { x: initial.x + dx, y: initial.y + dy })
-                            : { ...node, position: snapCanvasPosition({ x: initial.x + dx, y: initial.y + dy }) }
+                            ? moveFilmNodeProjection(node, { x: initial.x + dx, y: initial.y + dy }, gridSize, aligned.snappedAxes)
+                            : { ...node, position: snapCanvasPosition({ x: initial.x + dx, y: initial.y + dy }, gridSize, aligned.snappedAxes) }
                         : node;
                 });
                 return applyFrameDrop(positioned, draggedNodeIds, findFrameDropTarget(positioned, draggedNodeIds));
@@ -223,7 +228,7 @@ export function useCanvasSelectionController({
             const clickedNode = nodesRef.current.find((node) => node.id === clickedNodeId);
             if (clickedNode) onNodeClick(clickedNode);
         }
-    }, [historyPausedRef, nodesRef, onNodeClick, setNodes, viewportRef]);
+    }, [gridSize, historyPausedRef, nodesRef, onNodeClick, setNodes, viewportRef]);
 
     const handleMouseMove = useCallback((event: MouseEvent) => {
         if (!dragRef.current.isDraggingNode) return;
@@ -232,7 +237,7 @@ export function useCanvasSelectionController({
         if (Math.abs(event.clientX - dragRef.current.startX) > 3 || Math.abs(event.clientY - dragRef.current.startY) > 3) dragRef.current.hasMoved = true;
         if (dragFrameRef.current) return;
         dragFrameRef.current = requestAnimationFrame(() => {
-            const aligned = calculateNodeAlignment(alignmentContextRef.current, pendingNodeDragRef.current, 7 / viewportRef.current.k);
+            const aligned = calculateNodeAlignment(alignmentContextRef.current, pendingNodeDragRef.current, 6 / viewportRef.current.k, 8 / viewportRef.current.k);
             const latest = aligned.offset;
             pendingAlignmentGuidesRef.current = aligned.guides;
             const initialById = new Map(dragRef.current.initialSelectedNodes.map((item) => [item.id, item]));
@@ -248,7 +253,7 @@ export function useCanvasSelectionController({
             }
             setDragPreview((current) => current ? { ...current, x: latest.x, y: latest.y } : current);
             const nextGuides = dragRef.current.hasMoved ? pendingAlignmentGuidesRef.current : {};
-            setAlignmentGuides((current) => current.vertical === nextGuides.vertical && current.horizontal === nextGuides.horizontal ? current : nextGuides);
+            setAlignmentGuides((current) => sameAlignmentGuides(current, nextGuides) ? current : nextGuides);
             dragFrameRef.current = null;
         });
     }, [nodesRef, viewportRef]);
@@ -345,4 +350,21 @@ export function useCanvasSelectionController({
         selectionBoundsElementRef,
         selectionBox,
     };
+}
+
+function sameAlignmentGuides(left: CanvasAlignmentGuides, right: CanvasAlignmentGuides) {
+    return left.vertical === right.vertical
+        && left.horizontal === right.horizontal
+        && sameEqualGapGuide(left.equalGapX, right.equalGapX)
+        && sameEqualGapGuide(left.equalGapY, right.equalGapY);
+}
+
+function sameEqualGapGuide(left: CanvasAlignmentGuides["equalGapX"], right: CanvasAlignmentGuides["equalGapX"]) {
+    if (!left || !right) return left === right;
+    return left.axis === right.axis
+        && left.beforeStart === right.beforeStart
+        && left.beforeEnd === right.beforeEnd
+        && left.afterStart === right.afterStart
+        && left.afterEnd === right.afterEnd
+        && left.cross === right.cross;
 }

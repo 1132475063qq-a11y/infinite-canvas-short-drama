@@ -258,69 +258,6 @@ function clamp(value: number, min: number, max: number) {
     return Math.min(Math.max(value, min), max);
 }
 
-export type NodeAlignmentContext = {
-    movingBounds: { left: number; top: number; right: number; bottom: number };
-    targets: Array<{ x: number[]; y: number[] }>;
-};
-
-export function createNodeAlignmentContext(nodes: CanvasNodeData[], initialPositions: Array<{ id: string; x: number; y: number }>): NodeAlignmentContext | null {
-    const movingIds = new Set(initialPositions.map((item) => item.id));
-    const initialById = new Map(initialPositions.map((item) => [item.id, item]));
-    const movingNodes = nodes.filter((node) => movingIds.has(node.id));
-    if (!movingNodes.length) return null;
-    const nodeById = new Map(nodes.map((node) => [node.id, node]));
-    const left = Math.min(...movingNodes.map((node) => initialById.get(node.id)?.x ?? node.position.x));
-    const top = Math.min(...movingNodes.map((node) => initialById.get(node.id)?.y ?? node.position.y));
-    const right = Math.max(...movingNodes.map((node) => (initialById.get(node.id)?.x ?? node.position.x) + node.width));
-    const bottom = Math.max(...movingNodes.map((node) => (initialById.get(node.id)?.y ?? node.position.y) + node.height));
-    const targets = nodes.flatMap((node) => {
-        if (movingIds.has(node.id)) return [];
-        const batchRoot = node.metadata?.batchRootId ? nodeById.get(node.metadata.batchRootId) : null;
-        if (batchRoot && !batchRoot.metadata?.imageBatchExpanded) return [];
-        const parent = node.parentId ? nodeById.get(node.parentId) : null;
-        if (parent && isFrameNode(parent) && parent.metadata?.frame?.collapsed) return [];
-        return [{
-            x: [node.position.x, node.position.x + node.width / 2, node.position.x + node.width],
-            y: [node.position.y, node.position.y + node.height / 2, node.position.y + node.height],
-        }];
-    });
-    return { movingBounds: { left, top, right, bottom }, targets };
-}
-
-export function calculateNodeAlignment(context: NodeAlignmentContext | null, rawOffset: Position, threshold: number) {
-    if (!context) return { offset: rawOffset, guides: {} as { vertical?: number; horizontal?: number } };
-    const { left, top, right, bottom } = context.movingBounds;
-    const movingX = [left + rawOffset.x, (left + right) / 2 + rawOffset.x, right + rawOffset.x];
-    const movingY = [top + rawOffset.y, (top + bottom) / 2 + rawOffset.y, bottom + rawOffset.y];
-    let bestXDelta: number | undefined;
-    let bestXGuide: number | undefined;
-    let bestYDelta: number | undefined;
-    let bestYGuide: number | undefined;
-    context.targets.forEach(({ x: targetsX, y: targetsY }) => {
-        movingX.forEach((value, anchorIndex) => {
-            const target = targetsX[anchorIndex];
-            const delta = target - value;
-            if (Math.abs(delta) <= threshold && (bestXDelta === undefined || Math.abs(delta) < Math.abs(bestXDelta))) {
-                bestXDelta = delta;
-                bestXGuide = target;
-            }
-        });
-        movingY.forEach((value, anchorIndex) => {
-            const target = targetsY[anchorIndex];
-            const delta = target - value;
-            if (Math.abs(delta) <= threshold && (bestYDelta === undefined || Math.abs(delta) < Math.abs(bestYDelta))) {
-                bestYDelta = delta;
-                bestYGuide = target;
-            }
-        });
-    });
-    return {
-        offset: { x: rawOffset.x + (bestXDelta || 0), y: rawOffset.y + (bestYDelta || 0) },
-        guides: { vertical: bestXGuide, horizontal: bestYGuide },
-    };
-}
-
-
 export function isHiddenBatchChild(node: CanvasNodeData, nodes: CanvasNodeData[], collapsingBatchIds?: Set<string>) {
     const rootId = node.metadata?.batchRootId;
     if (!rootId) return false;

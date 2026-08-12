@@ -66,6 +66,7 @@ import { CanvasFreeformEmptyState, CanvasLinkedProjectEmptyState, CanvasShortDra
 import { createCanvasNode, createFilmCanvasNode, getInputSummary, isHiddenBatchChild, persistCanvasWorkspaceMode, readCanvasWorkspaceMode } from "@/lib/canvas/canvas-project-domain";
 import { applyFilmAutoLayout } from "@/lib/canvas/layout/layout-engine";
 import { reconcileFilmSceneProjections } from "@/lib/canvas/layout/film-scene-projection";
+import type { CanvasGridSize } from "@/lib/canvas/layout/layout-types";
 import { defaultCanvasConnectionVisibilityMode, nextCanvasConnectionVisibilityMode, type CanvasConnectionVisibilityMode } from "@/lib/canvas/canvas-connection-visibility";
 import { deriveStoryboardPipelineProgress } from "@/lib/canvas/canvas-storyboard-progress";
 import { CanvasAgentChangeToast, CanvasMergeStatusToast, CanvasUploadStatusToast } from "./canvas-project-feedback";
@@ -181,6 +182,7 @@ function InfiniteCanvasPage() {
     const [connectionVisibilityOverride, setConnectionVisibilityOverride] = useState<CanvasConnectionVisibilityMode | null>(null);
     const [backgroundMode, setBackgroundMode] = useState<CanvasBackgroundMode>("dots");
     const [showImageInfo, setShowImageInfo] = useState(false);
+    const [gridSize, setGridSize] = useState<CanvasGridSize>(8);
     const [canvasTool, setCanvasTool] = useState<CanvasToolMode>("move");
     const [mediaPerformanceMode, setMediaPerformanceMode] = useState<CanvasMediaPerformanceMode>(readCanvasMediaPerformanceMode);
     const [projectLoaded, setProjectLoaded] = useState(false);
@@ -276,12 +278,14 @@ function InfiniteCanvasPage() {
         activeChatId,
         backgroundMode,
         showImageInfo,
+        gridSize,
         setNodes,
         setConnections,
         setChatSessions,
         setActiveChatId,
         setBackgroundMode,
         setShowImageInfo,
+        setGridSize,
         setSelectedNodeIds,
         setSelectedConnectionId,
         setContextMenu,
@@ -303,6 +307,7 @@ function InfiniteCanvasPage() {
         activeChatId,
         backgroundMode,
         showImageInfo,
+        gridSize,
         viewport,
         nodesRef,
         connectionsRef,
@@ -314,6 +319,7 @@ function InfiniteCanvasPage() {
         setActiveChatId,
         setBackgroundMode,
         setShowImageInfo,
+        setGridSize,
         setViewport,
         setProjectLoaded,
         resetHistory,
@@ -331,8 +337,9 @@ function InfiniteCanvasPage() {
             refreshCanvasCharacterReferenceNodes(current, linkedProjectQuery.data.assets),
             linkedProjectQuery.data.project.id,
             linkedProjectQuery.data.scenes,
+            gridSize,
         ));
-    }, [linkedProjectQuery.data, projectLoaded, setNodes]);
+    }, [gridSize, linkedProjectQuery.data, projectLoaded, setNodes]);
     const canvasContext = useMemo(() => summarizeCanvasContext(nodes, selectedNodeIds, linkedProjectQuery.data?.units), [linkedProjectQuery.data?.units, nodes, selectedNodeIds]);
 
     const { bindGenerationTask, cancelNodeTask, confirmStopGeneration, finishGenerationRequest, openNodeTaskDetails, runningNodeId, setRunningNodeId, setTaskDetail, startGenerationRequest, taskDetail, taskDetailLoading, taskDetailLogs } =
@@ -720,6 +727,7 @@ function InfiniteCanvasPage() {
         setContextMenu,
         setDialogNodeId,
         onNodesDeleted: handleNodesDeleted,
+        gridSize,
     });
 
     const addFilmNode = useCallback(
@@ -755,7 +763,7 @@ function InfiniteCanvasPage() {
                     node.width = 280;
                     node.height = 180;
                     node.position = { x: nextPosition.x - node.width / 2, y: nextPosition.y - node.height / 2 };
-                    setNodes((current) => applyFilmAutoLayout([...current, node]));
+                    setNodes((current) => applyFilmAutoLayout([...current, node], gridSize));
                     setSelectedNodeIds(new Set([node.id]));
                     return;
                 }
@@ -789,7 +797,7 @@ function InfiniteCanvasPage() {
                         node.height = 240;
                         node.position = { x: nextPosition.x - node.width / 2, y: nextPosition.y - node.height / 2 };
                         node.layout = { mode: "auto", lane: "scene", order: scene.position };
-                        setNodes((current) => applyFilmAutoLayout([...current, node]));
+                        setNodes((current) => applyFilmAutoLayout([...current, node], gridSize));
                         setSelectedNodeIds(new Set([node.id]));
                         return;
                     }
@@ -824,7 +832,7 @@ function InfiniteCanvasPage() {
                     // A scene can be created from another project canvas. Mirror its
                     // production record into this canvas before adding the shot so
                     // the Scene Lane remains a complete, usable projection.
-                    if (hasFilmSceneProjection(current, scene.id)) return applyFilmAutoLayout([...current, node]);
+                    if (hasFilmSceneProjection(current, scene.id)) return applyFilmAutoLayout([...current, node], gridSize);
 
                     const sceneNode = createFilmCanvasNode(
                         CanvasNodeType.Frame,
@@ -841,7 +849,7 @@ function InfiniteCanvasPage() {
                     sceneNode.height = 240;
                     sceneNode.position = { x: nextPosition.x - sceneNode.width / 2, y: nextPosition.y - sceneNode.height / 2 };
                     sceneNode.layout = { mode: "auto", lane: "scene", order: scene.position };
-                    return applyFilmAutoLayout([...current, sceneNode, node]);
+                    return applyFilmAutoLayout([...current, sceneNode, node], gridSize);
                 });
                 setSelectedNodeIds(new Set([node.id]));
                 void refetchLinkedProject();
@@ -849,7 +857,7 @@ function InfiniteCanvasPage() {
                 message.error("影视生产节点创建失败，请稍后重试");
             }
         },
-        [getCanvasCenter, linkedProjectId, linkedProjectQuery.data, message, openProjectAssets, refetchLinkedProject, selectedFilmNode, setNodes, setSelectedNodeIds],
+        [getCanvasCenter, gridSize, linkedProjectId, linkedProjectQuery.data, message, openProjectAssets, refetchLinkedProject, selectedFilmNode, setNodes, setSelectedNodeIds],
     );
 
     const { cancelPendingConnectionCreate, closeConnectionCreateMenu, connectionTargetAnchorRatio, connectionTargetNodeId, connectingParams, createConnectedNode, handleConnectStart, mouseWorld, pendingConnectionCreate, setConnecting } =
@@ -922,6 +930,7 @@ function InfiniteCanvasPage() {
         onNodeClick: handleSelectedNodeClick,
         onDeselect: handleCanvasDeselect,
         onSelectionBoxEnd: () => setCanvasTool((tool) => (tool === "box-select" ? "move" : tool)),
+        gridSize,
     });
 
     const keepNodeToolbar = useCallback(
@@ -1857,6 +1866,7 @@ function InfiniteCanvasPage() {
                                     canRedo={historyState.canRedo}
                                     backgroundMode={backgroundMode}
                                     showImageInfo={showImageInfo}
+                                    gridSize={gridSize}
                                     onAddImage={() => createNode(CanvasNodeType.Image)}
                                     onAddVideo={() => createNode(CanvasNodeType.Video)}
                                     onAddAudio={() => createNode(CanvasNodeType.Audio)}
@@ -1874,6 +1884,7 @@ function InfiniteCanvasPage() {
                                     onDeselect={deselectCanvas}
                                     onBackgroundModeChange={setBackgroundMode}
                                     onShowImageInfoChange={setShowImageInfo}
+                                    onGridSizeChange={setGridSize}
                                     onOpenMyAssets={() => {
                                         openCanvasAssetLibrary();
                                     }}

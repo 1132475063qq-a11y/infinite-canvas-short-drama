@@ -1,4 +1,5 @@
 import type { PortraitTextureSettings } from "@/lib/canvas/canvas-portrait-texture";
+import type { CanvasGridSize } from "@/lib/canvas/layout/layout-types";
 import type { StyleExecutionPlan } from "@/lib/canvas/style-profile";
 import type { SrtEntry, SubtitleHighlight, SubtitleStyle } from "@/types/timeline";
 import type { FilmConnectionPorts, FilmEdgeType, FilmNodeDomainRef, FilmNodeKind, FilmNodeLayout, FilmNodeState } from "@/film/domain/types";
@@ -316,7 +317,7 @@ export type CanvasConnection = {
 
 export type CanvasProjectDocument = {
     schemaVersion?: number;
-    layout?: { gridSize: number };
+    layout?: { gridSize: CanvasGridSize };
     nodes: CanvasNodeData[];
 };
 

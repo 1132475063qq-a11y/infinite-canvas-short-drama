@@ -5,7 +5,8 @@ import { nanoid } from "nanoid";
 
 import { FRAME_HEADER_HEIGHT, getFrameChildIds, getFrameChildren, isFrameNode } from "@/lib/canvas/canvas-frame";
 import { alignCanvasNodes, layoutCanvasFlow, layoutCanvasNodes, nextCanvasVersionLabel, type CanvasAlignmentMode } from "@/lib/canvas/canvas-layout";
-import { snapCanvasPosition } from "@/lib/canvas/layout/snap-engine";
+import { applyCanvasLayoutTransaction } from "@/lib/canvas/layout/layout-transaction";
+import type { CanvasGridSize } from "@/lib/canvas/layout/layout-types";
 import { createCanvasNode, removeCanvasNodes } from "@/lib/canvas/canvas-project-domain";
 import { isolateCopiedNodeMetadata } from "@/lib/canvas/canvas-node-copy";
 import { CanvasNodeType, type CanvasConnection, type CanvasNodeData, type ContextMenuState, type Position } from "@/types/canvas";
@@ -36,6 +37,7 @@ type UseCanvasNodeOperationsOptions = {
     setContextMenu: Dispatch<SetStateAction<ContextMenuState | null>>;
     setDialogNodeId: Dispatch<SetStateAction<string | null>>;
     onNodesDeleted: (removedIds: Set<string>, nextNodes: CanvasNodeData[], removedNodes: CanvasNodeData[]) => void;
+    gridSize: CanvasGridSize;
 };
 
 export function useCanvasNodeOperations({
@@ -52,6 +54,7 @@ export function useCanvasNodeOperations({
     setContextMenu,
     setDialogNodeId,
     onNodesDeleted,
+    gridSize,
 }: UseCanvasNodeOperationsOptions) {
     const { message } = App.useApp();
     const tldrawLicenseKey = useUserStore((state) => state.drawingEngine.tldrawLicenseKey);
@@ -137,17 +140,17 @@ export function useCanvasNodeOperations({
         const selected = nodesRef.current.filter((node) => selectedNodeIdsRef.current.has(node.id) && !node.metadata?.locked && !isFrameNode(node));
         if (selected.length < 2) return;
         const positions = mode === "flow" ? layoutCanvasFlow(selected, connectionsRef.current) : layoutCanvasNodes(selected, mode);
-        commitNodes(nodesRef.current.map((node) => positions.has(node.id) ? { ...node, position: snapCanvasPosition(positions.get(node.id)!) } : node));
+        commitNodes(applyCanvasLayoutTransaction(nodesRef.current, positions, { gridSize }));
         message.success(mode === "flow" ? "已按连线整理" : "已整理选中节点");
-    }, [commitNodes, connectionsRef, message, nodesRef, selectedNodeIdsRef]);
+    }, [commitNodes, connectionsRef, gridSize, message, nodesRef, selectedNodeIdsRef]);
 
     const alignSelectedNodes = useCallback((mode: CanvasAlignmentMode) => {
         const selected = nodesRef.current.filter((node) => selectedNodeIdsRef.current.has(node.id) && !node.metadata?.locked && !isFrameNode(node));
         if (selected.length < 2 || ((mode === "distributeX" || mode === "distributeY") && selected.length < 3)) return;
         const positions = alignCanvasNodes(selected, mode);
-        commitNodes(nodesRef.current.map((node) => positions.has(node.id) ? { ...node, position: snapCanvasPosition(positions.get(node.id)!) } : node));
+        commitNodes(applyCanvasLayoutTransaction(nodesRef.current, positions, { gridSize }));
         message.success(mode === "distributeX" || mode === "distributeY" ? "已等距分布选中节点" : "已对齐选中节点");
-    }, [commitNodes, message, nodesRef, selectedNodeIdsRef]);
+    }, [commitNodes, gridSize, message, nodesRef, selectedNodeIdsRef]);
 
     const createStoryboardGroup = useCallback(() => {
         const images = nodesRef.current

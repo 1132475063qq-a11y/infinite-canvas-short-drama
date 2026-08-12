@@ -1,11 +1,12 @@
 import type { Position } from "@/types/canvas";
+import type { CanvasGridSize, CanvasSnappedAxes } from "./layout-types";
 
-export const DEFAULT_FILM_GRID_SIZE = 8;
+export const DEFAULT_FILM_GRID_SIZE: CanvasGridSize = 8;
 
-export function snapCanvasPosition(position: Position, gridSize = DEFAULT_FILM_GRID_SIZE): Position {
-    if (!Number.isFinite(gridSize) || gridSize <= 1) return position;
+export function snapCanvasPosition(position: Position, gridSize: CanvasGridSize = DEFAULT_FILM_GRID_SIZE, preserveAxes: Partial<CanvasSnappedAxes> = {}): Position {
+    if (gridSize === 0) return position;
     return {
-        x: Math.round(position.x / gridSize) * gridSize,
-        y: Math.round(position.y / gridSize) * gridSize,
+        x: preserveAxes.x ? position.x : Math.round(position.x / gridSize) * gridSize,
+        y: preserveAxes.y ? position.y : Math.round(position.y / gridSize) * gridSize,
     };
 }

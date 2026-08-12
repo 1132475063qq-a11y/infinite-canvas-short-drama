@@ -1,6 +1,7 @@
 import { createFilmNodeState, isFilmNodeKind, type FilmNodeKind } from "@/film/domain/types";
 import { normalizeFilmSceneTitle } from "@/film/domain/scene-projection";
 import { validateFilmConnection } from "@/film/domain/edge-contract";
+import { normalizeCanvasGridSize } from "@/lib/canvas/layout/layout-types";
 import type { CanvasConnection, CanvasNodeData, CanvasProjectDocument } from "@/types/canvas";
 
 const LEGACY_WORKFLOW_KIND_MAP: Record<string, FilmNodeKind> = {
@@ -19,7 +20,7 @@ export function migrateCanvasProjectDocument<T extends CanvasProjectDocument & {
     return {
         ...project,
         schemaVersion: Math.max(2, project.schemaVersion || 1),
-        layout: { gridSize: project.layout?.gridSize || 8 },
+        layout: { gridSize: normalizeCanvasGridSize(project.layout?.gridSize) },
         nodes,
         ...(connections ? { connections } : {}),
     };
