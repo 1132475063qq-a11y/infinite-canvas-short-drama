@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
 import { migrateCanvasProjectDocument } from "../src/film/domain/document-migration";
-import { describeFilmConnection } from "../src/film/domain/edge-contract";
+import { describeFilmConnection, validateFilmConnection } from "../src/film/domain/edge-contract";
 import { moveFilmNodeProjection } from "../src/film/domain/node-positioning";
 import { isFilmProductionProjection } from "../src/film/domain/node-projection";
 import { formatFilmSceneTitle, hasFilmSceneProjection, normalizeFilmSceneTitle } from "../src/film/domain/scene-projection";
@@ -9,6 +9,7 @@ import { applyFilmAutoLayout, applyFilmResultLayout } from "../src/lib/canvas/la
 import { canvasNodeRect, canvasRectsOverlap } from "../src/lib/canvas/layout/collision";
 import { reconcileFilmSceneProjections } from "../src/lib/canvas/layout/film-scene-projection";
 import { snapCanvasPosition } from "../src/lib/canvas/layout/snap-engine";
+import { normalizeConnection } from "../src/lib/canvas/canvas-project-domain";
 import { CanvasNodeType, type CanvasNodeData } from "../src/types/canvas";
 
 function filmNode(id: string, filmKind: CanvasNodeData["filmKind"], position = { x: 0, y: 0 }): CanvasNodeData {
@@ -162,7 +163,7 @@ describe("Film layout", () => {
 
 describe("Film semantic contracts", () => {
     test("影视节点连线带有独立于画布句柄的端口和边语义", () => {
-        const scene = { ...filmNode("scene-01", "scene"), domainRef: { projectId: "project-01", sceneId: "scene-01" } };
+        const scene = { ...filmNode("scene-01", "scene"), type: CanvasNodeType.Frame, domainRef: { projectId: "project-01", sceneId: "scene-01" } };
         const shot = { ...filmNode("shot-001", "shot"), domainRef: { projectId: "project-01", sceneId: "scene-01", shotId: "shot-001" } };
         const character = { ...filmNode("character-01", "character"), domainRef: { projectId: "project-01", assetId: "asset-01" } };
 
@@ -172,9 +173,46 @@ describe("Film semantic contracts", () => {
         });
         expect(describeFilmConnection(character, shot)).toEqual({
             edgeType: "reference",
-            filmPorts: { from: "asset_reference", to: "scene_context" },
+            filmPorts: { from: "asset_reference", to: "asset_reference" },
         });
         expect(describeFilmConnection(scene, filmNode("legacy", undefined))).toBeUndefined();
+        expect(normalizeConnection(scene.id, shot.id, [scene, shot], "source")).toEqual({ fromNodeId: scene.id, toNodeId: shot.id });
+    });
+
+    test("不兼容、跨项目和跨场景的生产连线被拒绝，旧节点仍保持自由连线", () => {
+        const shot = { ...filmNode("shot-001", "shot"), domainRef: { projectId: "project-01", sceneId: "scene-01", shotId: "shot-001" } };
+        const qc = { ...filmNode("qc-001", "qc"), domainRef: { projectId: "project-01", sceneId: "scene-01", shotId: "shot-001" } };
+        const character = { ...filmNode("character-01", "character"), domainRef: { projectId: "project-01", assetId: "asset-01" } };
+        const otherProjectCharacter = { ...character, id: "character-02", domainRef: { projectId: "project-02", assetId: "asset-02" } };
+        const otherScene = { ...filmNode("scene-02", "scene"), domainRef: { projectId: "project-01", sceneId: "scene-02" } };
+        const legacyShot = { ...filmNode("legacy-shot", "shot"), metadata: { workflowKind: "shot" as const } };
+
+        expect(validateFilmConnection(qc, character)).toMatchObject({ allowed: false });
+        expect(validateFilmConnection(otherProjectCharacter, shot)).toEqual({ allowed: false, reason: "影视生产节点不能跨项目连接" });
+        expect(validateFilmConnection(otherScene, shot)).toEqual({ allowed: false, reason: "镜头只能连接到自己所属的场景" });
+        expect(validateFilmConnection(legacyShot, qc)).toEqual({ allowed: true });
+    });
+
+    test("文档迁移为合法的旧生产连线补充语义，但不改写旧工作流和错误连线", () => {
+        const scene = { ...filmNode("scene-01", "scene"), domainRef: { projectId: "project-01", sceneId: "scene-01" } };
+        const shot = { ...filmNode("shot-001", "shot"), domainRef: { projectId: "project-01", sceneId: "scene-01", shotId: "shot-001" } };
+        const qc = { ...filmNode("qc-001", "qc"), domainRef: { projectId: "project-01", shotId: "shot-001" } };
+        const legacy = { ...filmNode("legacy", undefined), metadata: { workflowKind: "story_input" as const } };
+        const migrated = migrateCanvasProjectDocument({
+            nodes: [scene, shot, qc, legacy],
+            connections: [
+                { id: "valid", fromNodeId: scene.id, toNodeId: shot.id },
+                { id: "invalid", fromNodeId: qc.id, toNodeId: shot.id, edgeType: "authority", filmPorts: { from: "qc_decision", to: "scene_context" } },
+                { id: "legacy", fromNodeId: legacy.id, toNodeId: shot.id },
+            ],
+        });
+
+        expect(migrated.connections?.find((item) => item.id === "valid")).toMatchObject({
+            edgeType: "continuity",
+            filmPorts: { from: "scene_context", to: "scene_context" },
+        });
+        expect(migrated.connections?.find((item) => item.id === "invalid")?.edgeType).toBeUndefined();
+        expect(migrated.connections?.find((item) => item.id === "legacy")?.edgeType).toBeUndefined();
     });
 
     test("拖动镜头仅改变画布投影，不改变生产对象引用或状态", () => {

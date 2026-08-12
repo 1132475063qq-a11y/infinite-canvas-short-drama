@@ -1,4 +1,10 @@
+import type { FilmNodeDomainRef, FilmNodeKind } from "./types";
 import type { CanvasNodeData } from "@/types/canvas";
+
+export type FilmProductionProjection = CanvasNodeData & {
+    filmKind: FilmNodeKind;
+    domainRef: FilmNodeDomainRef & { projectId: string };
+};
 
 /**
  * Film meaning and canvas presentation are deliberately independent.
@@ -8,6 +14,6 @@ import type { CanvasNodeData } from "@/types/canvas";
  * but must keep their native editor or media renderer until they are linked to
  * a real production object.
  */
-export function isFilmProductionProjection(node: Pick<CanvasNodeData, "filmKind" | "domainRef"> | undefined): boolean {
+export function isFilmProductionProjection(node: CanvasNodeData | undefined): node is FilmProductionProjection {
     return Boolean(node?.filmKind && node.domainRef?.projectId);
 }

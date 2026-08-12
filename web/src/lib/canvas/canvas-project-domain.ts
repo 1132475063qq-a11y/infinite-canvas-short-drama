@@ -7,6 +7,7 @@ import { nodeSizeFromRatio } from "@/lib/canvas/canvas-node-size";
 import type { CanvasResourceReference } from "@/lib/canvas/canvas-resource-references";
 import { scopedLocalStorage } from "@/lib/user-scope";
 import { createFilmNodeState, type FilmNodeDomainRef, type FilmNodeKind } from "@/film/domain/types";
+import { isFilmProductionProjection } from "@/film/domain/node-projection";
 import type { GenerationTask } from "@/services/api/task-center";
 import { CanvasNodeType, type CanvasConnection, type CanvasNodeData, type CanvasNodeMetadata, type CanvasWorkspaceMode, type ConnectionHandle, type Position, type StoryboardColumn, type StoryboardRow } from "@/types/canvas";
 
@@ -185,7 +186,7 @@ export function normalizeConnection(firstNodeId: string, secondNodeId: string, n
     const first = nodes.find((node) => node.id === firstNodeId);
     const second = nodes.find((node) => node.id === secondNodeId);
     if (!first || !second || first.id === second.id) return null;
-    if (isFrameNode(first) || isFrameNode(second)) return null;
+    if ((isFrameNode(first) && !isFilmProductionProjection(first)) || (isFrameNode(second) && !isFilmProductionProjection(second))) return null;
     if (first.type === CanvasNodeType.Config && second.type === CanvasNodeType.Config) return null;
     if (second.type === CanvasNodeType.Config) return { fromNodeId: first.id, toNodeId: second.id };
     if (first.type === CanvasNodeType.Config && firstHandleType === "target") return { fromNodeId: second.id, toNodeId: first.id };

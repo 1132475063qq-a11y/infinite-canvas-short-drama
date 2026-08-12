@@ -8,7 +8,7 @@ import { attachNodeToStoryboardRow, createCanvasNode, getConnectionTargetAnchor,
 import { createCanvasDrawingFromImage } from "@/lib/canvas/canvas-drawing-storage";
 import { isDrawingEngineAvailable, type CanvasDrawingEngine } from "@/lib/canvas/canvas-drawing-engine";
 import { isFrameNode, isNodeHiddenByCollapsedFrame } from "@/lib/canvas/canvas-frame";
-import { describeFilmConnection } from "@/film/domain/edge-contract";
+import { validateFilmConnection } from "@/film/domain/edge-contract";
 import { useUserStore } from "@/stores/use-user-store";
 import { CanvasNodeType, type CanvasConnection, type CanvasNodeData, type ConnectionHandle, type ContextMenuState, type Position, type ViewportTransform } from "@/types/canvas";
 
@@ -106,10 +106,15 @@ export function useCanvasConnectionController({
         const toHandleId = toNodeId === current.nodeId ? current.handleId : targetHandleId;
         const fromAnchorRatio = fromNodeId === current.nodeId ? current.anchorRatio : targetAnchorRatio;
         const toAnchorRatio = toNodeId === current.nodeId ? current.anchorRatio : targetAnchorRatio;
-        const semantic = describeFilmConnection(nodesRef.current.find((node) => node.id === fromNodeId), nodesRef.current.find((node) => node.id === toNodeId));
+        const validation = validateFilmConnection(nodesRef.current.find((node) => node.id === fromNodeId), nodesRef.current.find((node) => node.id === toNodeId));
+        if (!validation.allowed) {
+            message.warning(validation.reason);
+            return;
+        }
+        const semantic = validation.semantic;
         const exists = connectionsRef.current.find((item) => item.fromNodeId === fromNodeId && item.toNodeId === toNodeId && item.fromHandleId === fromHandleId && item.toHandleId === toHandleId);
         if (exists) {
-            setConnections((currentConnections) => currentConnections.map((item) => item.id === exists.id ? { ...item, fromAnchorRatio, toAnchorRatio } : item));
+            setConnections((currentConnections) => currentConnections.map((item) => item.id === exists.id ? { ...item, fromAnchorRatio, toAnchorRatio, ...semantic } : item));
         } else {
             setConnections((currentConnections) => [...currentConnections, { id: `conn-${Date.now()}`, fromNodeId, toNodeId, fromHandleId, toHandleId, fromAnchorRatio, toAnchorRatio, ...semantic }]);
             setNodes((currentNodes) => attachNodeToStoryboardRow(currentNodes, { fromNodeId, toNodeId, fromHandleId, toHandleId }));
@@ -185,10 +190,15 @@ export function useCanvasConnectionController({
         const toHandleId = connection.toNodeId === pending.connection.nodeId ? pending.connection.handleId : undefined;
         const fromAnchorRatio = connection.fromNodeId === pending.connection.nodeId ? pending.connection.anchorRatio : 0.5;
         const toAnchorRatio = connection.toNodeId === pending.connection.nodeId ? pending.connection.anchorRatio : 0.5;
-        const semantic = describeFilmConnection(
+        const validation = validateFilmConnection(
             [...nodesRef.current, newNode].find((node) => node.id === connection.fromNodeId),
             [...nodesRef.current, newNode].find((node) => node.id === connection.toNodeId),
         );
+        if (!validation.allowed) {
+            message.warning(validation.reason);
+            return;
+        }
+        const semantic = validation.semantic;
         const connected = { ...connection, fromHandleId, toHandleId, fromAnchorRatio, toAnchorRatio, ...semantic };
         setNodes((currentNodes) => attachNodeToStoryboardRow([...currentNodes, newNode], connected));
         setConnections((currentConnections) => [...currentConnections, { id: nanoid(), ...connected }]);

@@ -1,6 +1,7 @@
 import { createFilmNodeState, isFilmNodeKind, type FilmNodeKind } from "@/film/domain/types";
 import { normalizeFilmSceneTitle } from "@/film/domain/scene-projection";
-import type { CanvasNodeData, CanvasProjectDocument } from "@/types/canvas";
+import { validateFilmConnection } from "@/film/domain/edge-contract";
+import type { CanvasConnection, CanvasNodeData, CanvasProjectDocument } from "@/types/canvas";
 
 const LEGACY_WORKFLOW_KIND_MAP: Record<string, FilmNodeKind> = {
     script: "script",
@@ -12,14 +13,28 @@ const LEGACY_WORKFLOW_KIND_MAP: Record<string, FilmNodeKind> = {
     final: "result",
 };
 
-export function migrateCanvasProjectDocument<T extends CanvasProjectDocument>(project: T): T {
+export function migrateCanvasProjectDocument<T extends CanvasProjectDocument & { connections?: CanvasConnection[] }>(project: T): T {
     const nodes = project.nodes.map(migrateCanvasNode);
+    const connections = project.connections?.map((connection) => migrateFilmConnection(connection, nodes));
     return {
         ...project,
         schemaVersion: Math.max(2, project.schemaVersion || 1),
         layout: { gridSize: project.layout?.gridSize || 8 },
         nodes,
+        ...(connections ? { connections } : {}),
     };
+}
+
+export function migrateFilmConnection(connection: CanvasConnection, nodes: CanvasNodeData[]): CanvasConnection {
+    const from = nodes.find((node) => node.id === connection.fromNodeId);
+    const to = nodes.find((node) => node.id === connection.toNodeId);
+    const validation = validateFilmConnection(from, to);
+    if (!validation.allowed) {
+        const { edgeType: _edgeType, filmPorts: _filmPorts, ...freeformConnection } = connection;
+        return freeformConnection;
+    }
+    if (!validation.semantic) return connection;
+    return { ...connection, ...validation.semantic };
 }
 
 export function migrateCanvasNode(node: CanvasNodeData): CanvasNodeData {
