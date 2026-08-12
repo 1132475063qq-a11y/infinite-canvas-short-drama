@@ -3,6 +3,7 @@ import { describe, expect, test } from "bun:test";
 import { migrateCanvasProjectDocument } from "../src/film/domain/document-migration";
 import { describeFilmConnection } from "../src/film/domain/edge-contract";
 import { moveFilmNodeProjection } from "../src/film/domain/node-positioning";
+import { isFilmProductionProjection } from "../src/film/domain/node-projection";
 import { formatFilmSceneTitle, hasFilmSceneProjection, normalizeFilmSceneTitle } from "../src/film/domain/scene-projection";
 import { applyFilmAutoLayout, applyFilmResultLayout } from "../src/lib/canvas/layout/layout-engine";
 import { canvasNodeRect, canvasRectsOverlap } from "../src/lib/canvas/layout/collision";
@@ -45,6 +46,27 @@ describe("Film Semantic migration", () => {
                 attention: "none",
             },
         });
+        expect(isFilmProductionProjection(migrated.nodes[0])).toBe(false);
+    });
+
+    test("旧工作流语义不会把原生节点误判为数据库生产投影", () => {
+        const nativeStoryboard = migrateCanvasProjectDocument({
+            nodes: [
+                {
+                    ...filmNode("legacy-storyboard", undefined),
+                    metadata: { workflowKind: "storyboard", content: "原分镜内容" },
+                },
+            ],
+        }).nodes[0];
+        const recordedShot = {
+            ...filmNode("recorded-shot", "shot"),
+            domainRef: { projectId: "project-01", sceneId: "scene-01", shotId: "shot-01" },
+        };
+
+        expect(nativeStoryboard.filmKind).toBe("script");
+        expect(nativeStoryboard.metadata?.content).toBe("原分镜内容");
+        expect(isFilmProductionProjection(nativeStoryboard)).toBe(false);
+        expect(isFilmProductionProjection(recordedShot)).toBe(true);
     });
 
     test("不具备影视语义的旧节点保持原样", () => {

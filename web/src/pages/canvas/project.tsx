@@ -25,6 +25,7 @@ import { CanvasAssetTray } from "@/components/canvas/canvas-asset-tray";
 import { CanvasProjectSidebar } from "@/components/canvas/canvas-project-sidebar";
 import { FilmInspector } from "@/film/inspector/film-inspector";
 import { FilmNodeCard } from "@/film/nodes/film-node-card";
+import { isFilmProductionProjection } from "@/film/domain/node-projection";
 import { formatFilmSceneTitle, hasFilmSceneProjection } from "@/film/domain/scene-projection";
 import { CanvasProjectAssetModal } from "@/components/canvas/canvas-project-asset-modal";
 import { CanvasCharacterReferenceNodeContent } from "@/components/canvas/canvas-character-reference-node";
@@ -1441,7 +1442,7 @@ function InfiniteCanvasPage() {
 
     const renderCanvasNodeContent = useCallback(
         (contentNode: CanvasNodeData) => {
-            if (contentNode.filmKind) return <FilmNodeCard node={contentNode} />;
+            if (isFilmProductionProjection(contentNode)) return <FilmNodeCard node={contentNode} />;
             if (contentNode.metadata?.workflowKind === "character" && contentNode.metadata.characterAssetId) {
                 return <CanvasCharacterReferenceNodeContent node={contentNode} />;
             }
