@@ -24,6 +24,7 @@ type CanvasProjectWorldLayersProps = {
     nodeById: Map<string, CanvasNodeData>;
     visibleNodes: CanvasNodeData[];
     frameChildrenById: Map<string, CanvasNodeData[]>;
+    sceneShotCountById: Map<string, number>;
     dragPreview: DragPreview;
     selectedNodeIds: Set<string>;
     frameDropTargetId: string | null;
@@ -102,6 +103,7 @@ export function CanvasProjectWorldLayers(props: CanvasProjectWorldLayersProps) {
                         data={node}
                         dragOffset={props.dragPreview?.nodeIds.has(node.id) ? props.dragPreview : undefined}
                         childNodes={props.frameChildrenById.get(node.id) || EMPTY_CANVAS_NODES}
+                        shotCount={node.domainRef?.sceneId ? props.sceneShotCountById.get(node.domainRef.sceneId) || 0 : 0}
                         scale={viewportScale}
                         isSelected={props.selectedNodeIds.has(node.id)}
                         isDropTarget={props.frameDropTargetId === node.id}

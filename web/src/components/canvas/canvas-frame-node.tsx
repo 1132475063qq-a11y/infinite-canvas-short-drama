@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { MouseEvent as ReactMouseEvent } from "react";
-import { ChevronDown, ChevronRight, Video } from "lucide-react";
+import { ChevronDown, ChevronRight, Clapperboard, Video } from "lucide-react";
 
 import { CometCard } from "@/components/ui/aceternity/comet-card";
 import { CanvasConnectionSideRail } from "@/components/canvas/canvas-connection-side-rail";
@@ -16,6 +16,7 @@ export const CanvasFrameNode = React.memo(function CanvasFrameNode({
     data,
     dragOffset,
     childNodes,
+    shotCount = 0,
     scale,
     isSelected,
     isDropTarget,
@@ -32,6 +33,7 @@ export const CanvasFrameNode = React.memo(function CanvasFrameNode({
     data: CanvasNodeData;
     dragOffset?: Position;
     childNodes: CanvasNodeData[];
+    shotCount?: number;
     scale: number;
     isSelected: boolean;
     isDropTarget: boolean;
@@ -145,6 +147,20 @@ export const CanvasFrameNode = React.memo(function CanvasFrameNode({
     };
 
     const active = isSelected || isDropTarget;
+    const isFilmSceneLane = isFilmProductionProjection(data) && data.filmKind === "scene";
+    const layoutMode = (data.layout?.mode || "auto").toUpperCase();
+    const productionState = data.filmState?.production || "not_started";
+    const productionLabel = {
+        not_started: "未开始",
+        ready: "已就绪",
+        running: "生产中",
+        blocked: "已阻塞",
+        generated: "已生成",
+        qc_failed: "QC 未通过",
+        approved: "已通过",
+    }[productionState];
+    const productionColor =
+        productionState === "approved" ? "#22c55e" : productionState === "qc_failed" || productionState === "blocked" ? theme.accent.danger : productionState === "running" || productionState === "generated" ? theme.accent.primary : theme.node.faint;
 
     return (
         <div
@@ -180,7 +196,15 @@ export const CanvasFrameNode = React.memo(function CanvasFrameNode({
                     boxShadow: isSelected ? `0 0 0 ${1 / Math.max(scale, 0.05)}px ${theme.frame.activeStroke}33, 0 24px 72px ${theme.spatial.shadow}` : `0 18px 54px ${theme.spatial.shadow}`,
                 }}
             >
-                <div className="pointer-events-auto absolute inset-x-0 top-0 z-10 flex items-center gap-1.5 px-1.5" style={{ height: FRAME_HEADER_HEIGHT, color: theme.node.text }}>
+                <div
+                    className="pointer-events-auto absolute inset-x-0 top-0 z-10 flex items-center gap-1.5 border-b px-1.5"
+                    style={{
+                        height: FRAME_HEADER_HEIGHT,
+                        color: theme.node.text,
+                        borderColor: isFilmSceneLane ? `${theme.accent.primary}24` : "transparent",
+                        background: isFilmSceneLane ? `linear-gradient(90deg, ${theme.accent.primarySoft}, transparent 72%)` : "transparent",
+                    }}
+                >
                     <button
                         type="button"
                         className="grid size-8 shrink-0 place-items-center rounded-md transition-colors hover:bg-black/5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 dark:hover:bg-white/10"
@@ -194,6 +218,11 @@ export const CanvasFrameNode = React.memo(function CanvasFrameNode({
                     >
                         {collapsed ? <ChevronRight className="size-4" /> : <ChevronDown className="size-4" />}
                     </button>
+                    {isFilmSceneLane ? (
+                        <span className="inline-flex shrink-0 items-center gap-1 rounded-full border px-1.5 py-0.5 text-[9px] font-bold tracking-[0.12em]" style={{ borderColor: `${theme.accent.primary}45`, color: theme.accent.primary }}>
+                            <Clapperboard className="size-3" /> SCENE LANE
+                        </span>
+                    ) : null}
                     {editing ? (
                         <input
                             autoFocus
@@ -225,9 +254,21 @@ export const CanvasFrameNode = React.memo(function CanvasFrameNode({
                             {data.title}
                         </button>
                     )}
-                    <span className="ml-auto shrink-0 pr-1 text-[var(--fs-label)] tabular-nums" style={{ color: theme.node.muted }}>
-                        {childNodes.length}
-                    </span>
+                    {isFilmSceneLane ? (
+                        <span className="ml-auto inline-flex shrink-0 items-center gap-1.5 pr-1 text-[var(--fs-micro)] font-semibold tabular-nums" style={{ color: theme.node.muted }}>
+                            <span className="rounded-full border px-1.5 py-0.5" style={{ borderColor: theme.toolbar.border }}>
+                                {shotCount} 镜
+                            </span>
+                            <span className="rounded-full border px-1.5 py-0.5" style={{ borderColor: theme.toolbar.border }}>
+                                {layoutMode}
+                            </span>
+                            <span className="size-2 rounded-full" style={{ background: productionColor }} title={`生产状态：${productionLabel}`} aria-label={`生产状态：${productionLabel}`} />
+                        </span>
+                    ) : (
+                        <span className="ml-auto shrink-0 pr-1 text-[var(--fs-label)] tabular-nums" style={{ color: theme.node.muted }}>
+                            {childNodes.length}
+                        </span>
+                    )}
                 </div>
 
                 {collapsed ? <FramePreview nodes={childNodes} frame={data} theme={theme} /> : null}

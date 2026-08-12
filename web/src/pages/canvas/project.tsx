@@ -66,6 +66,7 @@ import { CanvasFreeformEmptyState, CanvasLinkedProjectEmptyState, CanvasShortDra
 import { createCanvasNode, createFilmCanvasNode, getInputSummary, isHiddenBatchChild, persistCanvasWorkspaceMode, readCanvasWorkspaceMode } from "@/lib/canvas/canvas-project-domain";
 import { applyFilmAutoLayout } from "@/lib/canvas/layout/layout-engine";
 import { reconcileFilmSceneProjections } from "@/lib/canvas/layout/film-scene-projection";
+import { defaultCanvasConnectionVisibilityMode, nextCanvasConnectionVisibilityMode, type CanvasConnectionVisibilityMode } from "@/lib/canvas/canvas-connection-visibility";
 import { deriveStoryboardPipelineProgress } from "@/lib/canvas/canvas-storyboard-progress";
 import { CanvasAgentChangeToast, CanvasMergeStatusToast, CanvasUploadStatusToast } from "./canvas-project-feedback";
 import { backendProviderConfig, getGenerationCount } from "@/lib/canvas/canvas-project-generation";
@@ -177,6 +178,7 @@ function InfiniteCanvasPage() {
     const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
     const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
     const [isMiniMapOpen, setIsMiniMapOpen] = useState(false);
+    const [connectionVisibilityOverride, setConnectionVisibilityOverride] = useState<CanvasConnectionVisibilityMode | null>(null);
     const [backgroundMode, setBackgroundMode] = useState<CanvasBackgroundMode>("dots");
     const [showImageInfo, setShowImageInfo] = useState(false);
     const [canvasTool, setCanvasTool] = useState<CanvasToolMode>("move");
@@ -203,6 +205,9 @@ function InfiniteCanvasPage() {
     const [previewNodeId, setPreviewNodeId] = useState<string | null>(null);
     const [scriptEditorNodeId, setScriptEditorNodeId] = useState<string | null>(null);
     const [scriptScrollTopById, setScriptScrollTopById] = useState<Record<string, number>>({});
+    const connectionVisibilityMode = connectionVisibilityOverride || defaultCanvasConnectionVisibilityMode(nodes);
+
+    useEffect(() => setConnectionVisibilityOverride(null), [projectId]);
     const [directorNodeId, setDirectorNodeId] = useState<string | null>(null);
     const [versionCompareRootId, setVersionCompareRootId] = useState<string | null>(null);
     const codexAutoConnect = ["new", "recent", "choose"].includes(searchParams.get("mode") || "");
@@ -992,6 +997,7 @@ function InfiniteCanvasPage() {
         reduceMediaEffects,
         relatedHighlight,
         resourceReferenceByNodeId,
+        sceneShotCountById,
         selectedNodeBounds,
         selectedVideoNodes,
         skillMentionReferences,
@@ -1009,7 +1015,9 @@ function InfiniteCanvasPage() {
         viewportSize: size,
         mediaPerformanceMode,
         selectedNodeIds,
+        selectedConnectionId,
         hoveredNodeId,
+        connectionVisibilityMode,
         dragPreview,
         collapsingBatchIds,
         addedSkills,
@@ -1764,6 +1772,7 @@ function InfiniteCanvasPage() {
                                     nodeById={nodeById}
                                     visibleNodes={visibleNodes}
                                     frameChildrenById={frameChildrenById}
+                                    sceneShotCountById={sceneShotCountById}
                                     dragPreview={dragPreview}
                                     selectedNodeIds={selectedNodeIds}
                                     frameDropTargetId={frameDropTargetId}
@@ -2042,6 +2051,8 @@ function InfiniteCanvasPage() {
                                 onReset={resetViewport}
                                 isMiniMapOpen={isMiniMapOpen}
                                 onToggleMiniMap={() => setIsMiniMapOpen((value) => !value)}
+                                connectionVisibilityMode={connectionVisibilityMode}
+                                onCycleConnectionVisibility={() => setConnectionVisibilityOverride(nextCanvasConnectionVisibilityMode(connectionVisibilityMode))}
                                 onOpenShortcuts={() => setShortcutRequestNonce((value) => value + 1)}
                             />
                             <CanvasAssetTray
