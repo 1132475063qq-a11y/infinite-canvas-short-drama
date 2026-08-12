@@ -16,7 +16,7 @@ git log -8 --oneline
 预期分支：
 
 ```text
-codex/phase1-film-semantic
+codex/phase3-production-ui-shell
 ```
 
 主规划文档：
@@ -109,6 +109,27 @@ web/src/lib/canvas/layout/
 web/test/canvas-layout-engine.test.ts
 ```
 
+### Phase 3：Production UI Shell（完成）
+
+已完成：
+
+- 左侧 15 项 Project Navigator：总览、故事、剧本、场景、角色、场地、道具、分镜、镜头、资产、声音、QC、Agent、待处理、交付。
+- 顶部 Project Production Status：镜头进度、运行任务、QC 失败、Needs You。
+- 右侧统一 Inspector Header 与按对象类型切换的 Tabs；Shot 已显示 DomainRef、Shot Contract、状态与证据。
+- 底部当前 Scene 的 Shot Strip；点击已投影镜头会选中并定位画布节点。
+- 影视导航、Shot Strip、Inspector 共用后端 Project/Scene/Shot/Asset/Task 与 Canvas Projection，不建立第二套事实源。
+- 画布视图控制已避开 Shot Strip，不遮挡底部镜头卡。
+
+核心目录：
+
+```text
+web/src/film/panels/
+web/src/film/inspector/
+web/src/components/canvas/canvas-project-sidebar.tsx
+web/src/pages/canvas/canvas-project-top-bar.tsx
+web/test/production-ui-shell.test.ts
+```
+
 最近五个本地阶段提交：
 
 ```text
@@ -136,6 +157,17 @@ Phase 1.5 当前工作区验证（2026-08-12）：
 - Web production build：通过。
 - `git diff --check`：通过。
 - 本阶段没有修改 UI，因此没有新增浏览器交互验收；此前 Phase 1/2 浏览器结果不等于 Phase 1.5 自动测试结果。
+
+Phase 3 验证（2026-08-12）：
+
+- Web 自动测试：78/78 通过。
+- TypeScript typecheck：通过。
+- Web production build：通过（仅保留已有 chunk-size warning）。
+- `git diff --check`：通过。
+- 浏览器实测：1920×1080、1440×900、1280×720 均无页面级横向或纵向溢出；左侧 15 项导航、顶部状态、底部 Shot Strip、右侧 Inspector 正常显示。
+- 浏览器交互：点击 Shot Strip 可选中真实 Shot Projection，导航同步到“镜头”，Inspector 显示 Shot ID、Scene ID、状态与 Evidence；Camera Tab 可切换。
+- 当前机器的 `localhost:3000` 被 `/Users/xiangyuqin/Desktop/Infinite-Canvas-main` 占用，本阶段用 `http://localhost:3001` 验收当前仓库；不要把 3000 的旧页面误当成本分支。
+- 本阶段页面没有新增运行错误；控制台只观察到已有 Ant Design Modal deprecated warning。
 
 常用验证命令：
 
@@ -178,7 +210,7 @@ LOCAL_UID=$(id -u) LOCAL_GID=$(id -g) docker compose -f docker-compose.dev.yml u
 
 这些属于后续阶段，不得提前宣称完成。
 
-## 6. 下一步：Phase 3 UI Shell
+## 6. 下一步：Phase 4 Film Nodes
 
 不要直接进入 Provider Gateway。最新版详细规划明确规定：
 
@@ -188,23 +220,24 @@ Phase 4 = Film Nodes
 Phase 5 = Provider Gateway v2
 ```
 
-Phase 1.5 已通过自动验收，下一会话不要重做模型。Phase 0 仍需另补数据库 schema 快照和恢复说明。
+Phase 3 已通过自动与浏览器验收，下一会话不要重做 UI Shell。Phase 0 仍需另补数据库 schema 快照和恢复说明。
 
-### Phase 3：UI Shell
+### Phase 4：Film Nodes
 
 下一阶段实现：
 
-- 完整 Left Project Navigator
-- Top Project Production Status
-- 可扩展 Right Inspector Header/Tabs
-- Bottom Shot Strip（不是现有 Timeline 编辑弹窗的简单替代）
-- 1920×1080、1440×900、1280×720 三档布局验收
+- 先做 Scene、Shot、Character、Location、Prop 的实体节点升级。
+- Shot Contract 补齐规划定义的生产字段，并由后端对象驱动。
+- Character / Location / Prop 使用 Asset + AssetVersion，不把画布 metadata 当事实源。
+- Inspector 已有 Tab Shell；本阶段只接入对应对象的真实编辑与版本信息。
+- 不提前实现 Phase 5 Provider Gateway，也不提前实现 Phase 6 Agent Runtime。
 
-已有 UI 只能复用后增量升级：
+优先复用并增量升级：
 
-- `web/src/components/canvas/canvas-project-sidebar.tsx`
-- `web/src/pages/canvas/canvas-project-top-bar.tsx`
+- `web/src/film/nodes/film-node-card.tsx`
 - `web/src/film/inspector/film-inspector.tsx`
+- `web/src/film/domain/`
+- 后端 Scene / Shot / Asset / AssetVersion 现有服务与 API
 
 ## 7. 明确未完成的 Phase 2 扩展项
 
@@ -232,6 +265,6 @@ Phase 1.5 已通过自动验收，下一会话不要重做模型。Phase 0 仍�
 请先完整读取 CONTINUE-HERE.md 和
 /Users/xiangyuqin/Downloads/短剧AI无限画布_Production_Canvas_v2_超详细发展规划.md。
 检查当前分支、Git 状态和最近提交，不要重做 Phase 1/Phase 2。
-Phase 1.5 已完成并通过 76/76 自动测试，不要重做。
-下一步只进入 Phase 3 UI Shell，先输出本轮文件范围，并如实区分自动验证与浏览器验证。
+Phase 3 已完成并通过 78/78 自动测试与三档浏览器验收，不要重做。
+下一步只进入 Phase 4 Film Nodes，先完成 Scene、Shot、Character、Location、Prop 的事实源与字段差距审计，再编码；不要提前进入 Provider Gateway。
 ```

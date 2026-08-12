@@ -24,6 +24,8 @@ import { CanvasActiveTaskPanel } from "@/components/canvas/canvas-active-task-pa
 import { CanvasAssetTray } from "@/components/canvas/canvas-asset-tray";
 import { CanvasProjectSidebar } from "@/components/canvas/canvas-project-sidebar";
 import { FilmInspector } from "@/film/inspector/film-inspector";
+import { ProductionShotStrip } from "@/film/panels/production-shot-strip";
+import { buildProductionShellModel, EMPTY_PRODUCTION_NAVIGATION_COUNTS, type ProductionNavigationKey } from "@/film/panels/production-shell-model";
 import { FilmNodeCard } from "@/film/nodes/film-node-card";
 import { isFilmProductionProjection } from "@/film/domain/node-projection";
 import { formatFilmSceneTitle, hasFilmSceneProjection } from "@/film/domain/scene-projection";
@@ -50,7 +52,7 @@ import { Minimap } from "@/components/canvas/canvas-mini-map";
 import { CanvasNodePromptPanel, type CanvasNodeGenerationMode } from "@/components/canvas/canvas-node-prompt-panel";
 import { CanvasToolbar } from "@/components/canvas/canvas-toolbar";
 import { AssetPickerModal, type InsertAssetPayload } from "@/components/canvas/asset-picker-modal";
-import { getProject, saveProjectScene, saveProjectShot } from "@/services/api/projects";
+import { getProject, saveProjectScene, saveProjectShot, type ProjectShot } from "@/services/api/projects";
 import { CanvasZoomControls } from "@/components/canvas/canvas-zoom-controls";
 import { CanvasShareModal } from "@/components/canvas/canvas-share-modal";
 import { CanvasScriptEditor, CanvasScriptNodeContent, STORYBOARD_HEADER_HEIGHT, STORYBOARD_ROW_HEIGHT, storyboardMinNodeHeight, storyboardTableHeight } from "@/components/canvas/canvas-script-node";
@@ -217,6 +219,7 @@ function InfiniteCanvasPage() {
     const [titleEditing, setTitleEditing] = useState(false);
     const [titleDraft, setTitleDraft] = useState("");
     const [shortcutRequestNonce, setShortcutRequestNonce] = useState(0);
+    const [productionSection, setProductionSection] = useState<ProductionNavigationKey>("overview");
     const [cinematicAgentEntry, setCinematicAgentEntry] = useState(false);
     // 面板初始宽度根据视口宽度动态选择，避免小屏幕上初始就过宽
     const [assistantWidth, setAssistantWidth] = useState(() => {
@@ -330,15 +333,11 @@ function InfiniteCanvasPage() {
     const linkedProjectId = currentProject?.projectId || "";
     const linkedProjectQuery = useQuery({ queryKey: ["project", linkedProjectId], queryFn: () => getProject(linkedProjectId), enabled: Boolean(linkedProjectId) });
     const selectedFilmNode = useMemo(() => (selectedNodeIds.size === 1 ? nodes.find((node) => node.id === Array.from(selectedNodeIds)[0] && Boolean(node.filmKind)) || null : null), [nodes, selectedNodeIds]);
+    const productionShell = useMemo(() => (linkedProjectQuery.data ? buildProductionShellModel(linkedProjectQuery.data, nodes, activeTasks, selectedFilmNode) : null), [activeTasks, linkedProjectQuery.data, nodes, selectedFilmNode]);
     const refetchLinkedProject = linkedProjectQuery.refetch;
     useEffect(() => {
         if (!projectLoaded || !linkedProjectQuery.data) return;
-        setNodes((current) => reconcileFilmSceneProjections(
-            refreshCanvasCharacterReferenceNodes(current, linkedProjectQuery.data.assets),
-            linkedProjectQuery.data.project.id,
-            linkedProjectQuery.data.scenes,
-            gridSize,
-        ));
+        setNodes((current) => reconcileFilmSceneProjections(refreshCanvasCharacterReferenceNodes(current, linkedProjectQuery.data.assets), linkedProjectQuery.data.project.id, linkedProjectQuery.data.scenes, gridSize));
     }, [gridSize, linkedProjectQuery.data, projectLoaded, setNodes]);
     const canvasContext = useMemo(() => summarizeCanvasContext(nodes, selectedNodeIds, linkedProjectQuery.data?.units), [linkedProjectQuery.data?.units, nodes, selectedNodeIds]);
 
@@ -599,6 +598,51 @@ function InfiniteCanvasPage() {
         setProjectAssetOpen(false);
         setProjectAssetInsertPosition(undefined);
     }, []);
+
+    const handleProductionNavigate = useCallback(
+        (section: ProductionNavigationKey) => {
+            setProductionSection(section);
+            if (section === "overview") {
+                fitCanvasContent();
+                return;
+            }
+            const assetCategory = ({ characters: "character", locations: "environment", props: "prop", assets: "all", audio: "all" } as Partial<Record<ProductionNavigationKey, string>>)[section];
+            if (assetCategory) {
+                openProjectAssets(assetCategory);
+                return;
+            }
+            const filmKind = (
+                { story: "story", script: "script", scenes: "scene", storyboard: "storyboard", shots: "shot", qc: "qc", agents: "agent_task", needs_you: "needs_you", delivery: "delivery" } as Partial<
+                    Record<ProductionNavigationKey, CanvasNodeData["filmKind"]>
+                >
+            )[section];
+            const target = filmKind ? nodesRef.current.find((node) => node.filmKind === filmKind) : undefined;
+            if (!target) return;
+            const selection = new Set([target.id]);
+            selectedNodeIdsRef.current = selection;
+            setSelectedNodeIds(selection);
+            setSelectedConnectionId(null);
+            focusCanvasNode(target.id);
+        },
+        [fitCanvasContent, focusCanvasNode, openProjectAssets, setSelectedNodeIds],
+    );
+
+    const handleProductionShotSelect = useCallback(
+        (shot: ProjectShot) => {
+            setProductionSection("shots");
+            const target = nodesRef.current.find((node) => node.filmKind === "shot" && node.domainRef?.shotId === shot.id);
+            if (!target) {
+                message.info(`${shot.title || "该镜头"}尚未投影到当前画布`);
+                return;
+            }
+            const selection = new Set([target.id]);
+            selectedNodeIdsRef.current = selection;
+            setSelectedNodeIds(selection);
+            setSelectedConnectionId(null);
+            focusCanvasNode(target.id);
+        },
+        [focusCanvasNode, message, setSelectedNodeIds],
+    );
 
     const {
         angleNodeId,
@@ -1661,6 +1705,9 @@ function InfiniteCanvasPage() {
                         onLocateStyle={locateProjectStyleNode}
                         onOpenAssets={() => openProjectAssets()}
                         onAddScene={() => void addFilmNode("scene")}
+                        activeSection={productionSection}
+                        navigationCounts={productionShell?.navigationCounts || EMPTY_PRODUCTION_NAVIGATION_COUNTS}
+                        onNavigate={handleProductionNavigate}
                     />
                 ) : null}
                 <section className="relative min-w-0 flex-1 flex flex-col min-h-0 overflow-hidden">
@@ -1701,6 +1748,7 @@ function InfiniteCanvasPage() {
                             }
                             onEnterFocusMode={enterFocusMode}
                             shortDramaGuide={shortDramaGuide}
+                            productionStatus={productionShell || undefined}
                         />
                     ) : null}
 
@@ -1927,6 +1975,8 @@ function InfiniteCanvasPage() {
                         ) : null}
                     </div>
 
+                    {!focusMode && productionShell ? <ProductionShotStrip model={productionShell} selectedShotId={selectedFilmNode?.domainRef?.shotId} onSelectShot={handleProductionShotSelect} /> : null}
+
                     {angleNode?.metadata?.content ? (
                         <CanvasNodePanelOverlay node={angleNode} viewport={viewport} containerRef={containerRef} panelWidth={580} panelHeight={350}>
                             <CanvasNodeAnglePanel
@@ -2051,6 +2101,7 @@ function InfiniteCanvasPage() {
                         <div
                             data-canvas-no-zoom
                             className="absolute bottom-[calc(var(--canvas-inset-y)+var(--space-16))] left-4 z-[var(--z-panel)] flex items-end gap-2 lg:bottom-[var(--canvas-inset-y)]"
+                            style={productionShell ? { bottom: "calc(var(--canvas-inset-y) + var(--space-24))" } : undefined}
                             onMouseDown={(event) => event.stopPropagation()}
                             onPointerDown={(event) => event.stopPropagation()}
                             onWheel={(event) => event.stopPropagation()}
@@ -2324,7 +2375,7 @@ function InfiniteCanvasPage() {
                         <CanvasLocalAgentPanel headless snapshot={agentSnapshot} canUndoOps={canUndoAgentOps} undoOpsCount={agentUndoCount} onApplyOps={applyAgentOps} onUndoOps={undoAgentOps} autoConnect={codexAutoConnect} />
                     ) : null}
                 </section>
-                {!focusMode ? <FilmInspector node={selectedFilmNode} project={linkedProjectQuery.data} /> : null}
+                {!focusMode ? <FilmInspector node={selectedFilmNode} project={linkedProjectQuery.data} activeSection={productionSection} /> : null}
             </main>
         </>
     );

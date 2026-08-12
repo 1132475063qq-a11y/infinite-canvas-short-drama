@@ -1,10 +1,38 @@
 import { useDeferredValue, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { ArrowUpRight, BookOpenText, ChevronLeft, ChevronRight, Crosshair, FolderKanban, GripVertical, Images, LocateFixed, LoaderCircle, Palette, Plus, Search, Settings2, UserRound, X } from "lucide-react";
+import {
+    ArrowUpRight,
+    AudioLines,
+    BookOpenText,
+    Bot,
+    Boxes,
+    CheckCircle2,
+    ChevronLeft,
+    ChevronRight,
+    CircleAlert,
+    Clapperboard,
+    Crosshair,
+    FolderKanban,
+    GripVertical,
+    Images,
+    LayoutDashboard,
+    LocateFixed,
+    LoaderCircle,
+    PackageCheck,
+    Palette,
+    Plus,
+    ScrollText,
+    Search,
+    Settings2,
+    Sparkles,
+    UserRound,
+    X,
+} from "lucide-react";
 import { Link } from "react-router";
 
 import { resolveProjectCanvasStyle } from "@/components/canvas/canvas-style-picker-modal";
+import type { ProductionNavigationCounts, ProductionNavigationKey } from "@/film/panels/production-shell-model";
 import { getProject, getProjectUnit, type ProjectDetail, type ProjectUnit } from "@/services/api/projects";
 
 export const CANVAS_PROJECT_CHAPTER_DND_TYPE = "application/x-infinite-canvas-project-chapter";
@@ -19,9 +47,12 @@ type CanvasProjectSidebarProps = {
     onLocateStyle: () => void;
     onOpenAssets: () => void;
     onAddScene?: () => void;
+    activeSection: ProductionNavigationKey;
+    navigationCounts: ProductionNavigationCounts;
+    onNavigate: (key: ProductionNavigationKey) => void;
 };
 
-export function CanvasProjectSidebar({ projectId, detail, onAddChapter, onLocateStyle, onOpenAssets, onAddScene }: CanvasProjectSidebarProps) {
+export function CanvasProjectSidebar({ projectId, detail, onAddChapter, onLocateStyle, onOpenAssets, onAddScene, activeSection, navigationCounts, onNavigate }: CanvasProjectSidebarProps) {
     const [collapsed, setCollapsed] = useState(false);
     const [query, setQuery] = useState("");
     const [selectedId, setSelectedId] = useState("");
@@ -33,10 +64,6 @@ export function CanvasProjectSidebar({ projectId, detail, onAddChapter, onLocate
     const projectDetail = detail || projectQuery.data;
     const style = resolveProjectCanvasStyle(projectDetail?.project.stylePresetId, projectDetail?.project.styleProfileJson);
     const mediaAssetCount = projectDetail?.assets.filter((asset) => asset.mediaType === "image" || asset.mediaType === "video").length || 0;
-    const sceneCount = projectDetail?.scenes.length || 0;
-    const characterCount = projectDetail?.assets.filter((asset) => asset.category === "character").length || 0;
-    const locationCount = projectDetail?.assets.filter((asset) => asset.category === "environment").length || 0;
-    const propCount = projectDetail?.assets.filter((asset) => asset.category === "prop").length || 0;
     const orderedUnits = useMemo(() => projectDetail?.units.slice().sort((left, right) => left.position - right.position) || [], [projectDetail?.units]);
     const visibleUnits = useMemo(() => {
         if (!deferredQuery) return orderedUnits.map((unit, index) => ({ unit, index }));
@@ -165,12 +192,21 @@ export function CanvasProjectSidebar({ projectId, detail, onAddChapter, onLocate
             <section className="shrink-0 border-b border-border/70 px-2 py-2">
                 <div className="mb-1 flex h-5 items-center px-1 text-[var(--fs-label)] font-medium text-foreground/48">影视生产</div>
                 <div className="grid grid-cols-2 gap-1">
-                    <FilmNavigationItem icon={<BookOpenText className="size-3.5" />} label="剧本" count={orderedUnits.length} />
-                    <FilmNavigationItem icon={<Crosshair className="size-3.5" />} label="场景" count={sceneCount} onClick={onAddScene} actionLabel="新建场景" />
-                    <FilmNavigationItem icon={<UserRound className="size-3.5" />} label="角色" count={characterCount} onClick={onOpenAssets} actionLabel="打开资产" />
-                    <FilmNavigationItem icon={<Images className="size-3.5" />} label="场地" count={locationCount} onClick={onOpenAssets} actionLabel="打开资产" />
-                    <FilmNavigationItem icon={<Images className="size-3.5" />} label="道具" count={propCount} onClick={onOpenAssets} actionLabel="打开资产" />
-                    <FilmNavigationItem icon={<Crosshair className="size-3.5" />} label="任务" count={projectDetail?.workflows.length || 0} />
+                    <FilmNavigationItem icon={<LayoutDashboard className="size-3.5" />} label="总览" count={navigationCounts.overview} active={activeSection === "overview"} onClick={() => onNavigate("overview")} />
+                    <FilmNavigationItem icon={<Sparkles className="size-3.5" />} label="故事" count={navigationCounts.story} active={activeSection === "story"} onClick={() => onNavigate("story")} />
+                    <FilmNavigationItem icon={<BookOpenText className="size-3.5" />} label="剧本" count={navigationCounts.script} active={activeSection === "script"} onClick={() => onNavigate("script")} />
+                    <FilmNavigationItem icon={<Clapperboard className="size-3.5" />} label="场景" count={navigationCounts.scenes} active={activeSection === "scenes"} onClick={() => onNavigate("scenes")} onAction={onAddScene} actionLabel="新建场景" />
+                    <FilmNavigationItem icon={<UserRound className="size-3.5" />} label="角色" count={navigationCounts.characters} active={activeSection === "characters"} onClick={() => onNavigate("characters")} />
+                    <FilmNavigationItem icon={<Images className="size-3.5" />} label="场地" count={navigationCounts.locations} active={activeSection === "locations"} onClick={() => onNavigate("locations")} />
+                    <FilmNavigationItem icon={<Boxes className="size-3.5" />} label="道具" count={navigationCounts.props} active={activeSection === "props"} onClick={() => onNavigate("props")} />
+                    <FilmNavigationItem icon={<ScrollText className="size-3.5" />} label="分镜" count={navigationCounts.storyboard} active={activeSection === "storyboard"} onClick={() => onNavigate("storyboard")} />
+                    <FilmNavigationItem icon={<Crosshair className="size-3.5" />} label="镜头" count={navigationCounts.shots} active={activeSection === "shots"} onClick={() => onNavigate("shots")} />
+                    <FilmNavigationItem icon={<Images className="size-3.5" />} label="资产" count={navigationCounts.assets} active={activeSection === "assets"} onClick={() => onNavigate("assets")} />
+                    <FilmNavigationItem icon={<AudioLines className="size-3.5" />} label="声音" count={navigationCounts.audio} active={activeSection === "audio"} onClick={() => onNavigate("audio")} />
+                    <FilmNavigationItem icon={<CheckCircle2 className="size-3.5" />} label="QC" count={navigationCounts.qc} active={activeSection === "qc"} onClick={() => onNavigate("qc")} />
+                    <FilmNavigationItem icon={<Bot className="size-3.5" />} label="Agent" count={navigationCounts.agents} active={activeSection === "agents"} onClick={() => onNavigate("agents")} />
+                    <FilmNavigationItem icon={<CircleAlert className="size-3.5" />} label="待处理" count={navigationCounts.needs_you} active={activeSection === "needs_you"} onClick={() => onNavigate("needs_you")} />
+                    <FilmNavigationItem icon={<PackageCheck className="size-3.5" />} label="交付" count={navigationCounts.delivery} active={activeSection === "delivery"} onClick={() => onNavigate("delivery")} />
                 </div>
             </section>
 
@@ -282,10 +318,34 @@ export function CanvasProjectSidebar({ projectId, detail, onAddChapter, onLocate
     );
 }
 
-function FilmNavigationItem({ icon, label, count, onClick, actionLabel }: { icon: ReactNode; label: string; count: number; onClick?: () => void; actionLabel?: string }) {
-    const content = <><span className="flex items-center gap-1.5 truncate">{icon}{label}</span><span className="tabular-nums text-foreground/35">{count}</span></>;
-    if (!onClick) return <div className="flex h-7 items-center justify-between rounded px-1.5 text-[var(--fs-label)] text-foreground/58">{content}</div>;
-    return <button type="button" className="flex h-7 items-center justify-between rounded px-1.5 text-[var(--fs-label)] text-foreground/58 hover:bg-foreground/[.06] hover:text-foreground" title={actionLabel} onClick={onClick}>{content}</button>;
+function FilmNavigationItem({ icon, label, count, active, onClick, onAction, actionLabel }: { icon: ReactNode; label: string; count: number; active: boolean; onClick: () => void; onAction?: () => void; actionLabel?: string }) {
+    return (
+        <div className={`flex h-7 items-center rounded text-[var(--fs-label)] ${active ? "bg-[var(--workspace-accent-soft)] text-[var(--workspace-accent)]" : "text-foreground/58 hover:bg-foreground/[.045] hover:text-foreground"}`}>
+            <button
+                type="button"
+                className="flex min-w-0 flex-1 items-center justify-between gap-1 px-1.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--workspace-accent)]"
+                aria-pressed={active}
+                onClick={onClick}
+            >
+                <span className="flex min-w-0 items-center gap-1.5 truncate">
+                    {icon}
+                    {label}
+                </span>
+                <span className="tabular-nums text-foreground/35">{count}</span>
+            </button>
+            {onAction ? (
+                <button
+                    type="button"
+                    className="grid size-6 shrink-0 place-items-center rounded text-foreground/35 hover:bg-foreground/[.08] hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--workspace-accent)]"
+                    title={actionLabel}
+                    aria-label={actionLabel}
+                    onClick={onAction}
+                >
+                    <Plus className="size-3" />
+                </button>
+            ) : null}
+        </div>
+    );
 }
 
 function ChapterPreview({
