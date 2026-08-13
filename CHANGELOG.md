@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+- 新增 Film `CanvasProjectionPatch`：服务端 Task 绑定独立于浏览器整份 Canvas 文档，按 Canvas 节点、项目、Generation Request Artifact 和精确版本作为并发保护；读取时才安全叠加 `DomainRef.taskId`，浏览器保存会剥离伪造/旧 Task ID，仍存在的 Canvas 全量替换不会擦除 Patch。该合同不创建 Task、计费单、ProviderJob、Result 或 Provider 调用；未来 Gateway 仍须把 Task、计费事实和 Patch 放进同一事务。
+- 新增 Film `Provider Route Catalog` 只读网关边界：按精确不可变 Generation Request 版本枚举匹配的后端 system-channel 模型，只返回脱敏的协议、能力/计费就绪状态和阻塞原因；Canvas Inspector 可查看候选渠道。该接口不会创建 Task、预扣积分、调用 Provider 或直接回写 `DomainRef.taskId`。真实原子提交仍需在同一事务中创建 Task、计费事实和已具备的 Canvas Projection Patch。
+- 新增 Film `GenerationRequest → Task Draft` 只读合同：后端按精确不可变请求版本返回 provider-independent Gateway 输入、来源、状态/阻塞原因与指纹；Canvas Inspector 可查看合同并显式保存请求为 draft/review/ready/locked。该接口不会创建 Task、计费单、ProviderJob、Result 或前端密钥，真实路由解析和提交仍未实现。
+- 新增 Film `generation_request` 不可变版本合同：后端从当前 Prompt Pack 冻结 compiled prompt / Artifact version，记录镜头合同、Prompt Pack 与镜头资产来源，拒绝密钥字段；画布新增 Prompt Pack → Generation Request 节点、Inspector 与自动布局。该批未提交真实 Provider Task，也未宣称 Result、QC 或 Retry 完成。
+- 同步 AI Creative Studio 合并规划：保留 Film V2 事实源与节点边界，新增 Ecommerce Creative Studio Prototype 附录，冻结 `short-drama` / `ecommerce` Domain 隔离、3 Agent、2 个 Prototype Skill、Artifact/QA/Benchmark 合同；新增 Provider-free Prototype A 合同与独立后端 Artifact 持久化 API，但未宣称 Ecommerce Agent Runtime、真实 Provider 或媒体质量已完成。
+- 新增 `docs/production-canvas/ecommerce-prototype-addendum.md`，冻结 Prototype A 的 Product Upload → ProductDNA → CreativeDirection → Lifestyle Tabletop → CreativeShotPlan → Result Grid 无 Provider 骨架，以及真实生成前的 Provider Evaluation 顺序。
+- 新增 `ecommerce-agent-team-v1.2.1-codex-ready.md` 与 `ecommerce-prototype-implementation-spec-v1.0.md`，吸收完整 838 行架构审查记录中的 P0 Provider Evaluation、Skill 文件协议、Executor、ExpectedRelationGraph、1–5 分 Benchmark、Prototype UI 可选范围、失败/成本/隐私边界。
+- 新增 `web/src/ecommerce/**` Provider-free Prototype A 合同、Skill 文件协议、Executor、Result Grid、Basic QA 和测试；真实生成仍需实际 Provider Bake-off 后单独实现。
+- 新增独立 `backend/internal/model/EcommerceArtifact`、版本追加 repository/service、项目类型校验和 `/projects/:id/ecommerce-artifacts` API；未修改 `FilmArtifact` 语义。
+- 新增创作项目类型选择、独立商品资产页和 Ecommerce Prototype A 开发面板：可运行无 Provider 合同链、追加保存五类 EcommerceArtifact，并恢复四槽位 Result Grid 与结构化 QA；未宣称真实图片生成或媒体质量完成。
+- 新增 `web/src/ecommerce/evaluation/provider-evaluation.ts` Provider Evaluation 记录合同及对应合同测试：统一设置指纹、候选能力、attempt、结果/成本/失败证据、1–5 分维度、盲测和显式 GO/MODIFY/STOP；未调用真实 Provider，也未宣称 Bake-off 完成。
+
 ## v1.0.49
 
 - 创作首页与画布提示词引用图支持点击放大，并为新素材上传补充落库说明、进行中状态和完成反馈。

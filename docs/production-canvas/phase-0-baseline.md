@@ -33,11 +33,27 @@ The SQLite database and its backup are deliberately excluded from Git: they can 
 
 Film semantic fields remain optional on `CanvasNodeData` so old documents open unchanged. `migrateCanvasProjectDocument()` upgrades film-compatible legacy nodes, accepts legacy `edges` and `layout.grid` aliases, and normalizes them to `connections` and `layout.gridSize` without replacing the existing canvas engine.
 
+## Merged AI Creative Studio boundary
+
+The repository now has two explicitly isolated production domains:
+
+```text
+Shared Canvas Core
+├── Film       → FilmNodeKind / FilmArtifact / Scene / Shot
+└── Ecommerce  → Ecommerce contracts and Provider-free Prototype A artifacts
+```
+
+Ecommerce reuses the Canvas Core, Project/Asset/Task/Result and Provider boundaries, but it must not add Ecommerce fields to `FilmArtifact` or change Film node semantics. The Ecommerce contract and current `READY FOR PROTOTYPE IMPLEMENTATION` gate are recorded in [`ecommerce-prototype-addendum.md`](./ecommerce-prototype-addendum.md), with the canonical split documents [`ecommerce-agent-team-v1.2.1-codex-ready.md`](./ecommerce-agent-team-v1.2.1-codex-ready.md) and [`ecommerce-prototype-implementation-spec-v1.0.md`](./ecommerce-prototype-implementation-spec-v1.0.md). The repository now contains a Provider-free Prototype A contract skeleton, an independent `EcommerceArtifact` persistence API, a project-type entry and a developer panel; no Ecommerce Agent Runtime, real Provider call, browser proof, media-quality result, or real QA proof is claimed.
+
+## Film Generation Request baseline
+
+Film `generation_request` is a versioned `FilmArtifact`, not a mutable task row. It snapshots the current Prompt Pack ID, Prompt Pack version and compiled prompt on the backend, records Shot Contract / Prompt Pack / Shot AssetVersion provenance, and rejects credential-shaped or unowned provider-execution fields. The Canvas `generation` node is only a projection and does not submit a Provider call. A read-only Task Draft can now be derived from one exact request version, and a separate read-only Provider Route catalog can reveal redacted matching backend system-channel candidates. Server-owned `canvas_projection_patches` now provide the revision-safe future Task binding: the base Canvas document never persists `domainRef.taskId`, and a Task ID is overlaid only when the exact Generation Request version still matches. Neither read-only operation nor the Patch contract creates a queued Task, billing record, ProviderJob, or Result. The complete contract is in [`film-generation-request-contract.md`](./film-generation-request-contract.md).
+
 ## Golden fixture
 
 `web/test/fixtures/parasite-ad-sc01.ts` is the fixed, provider-free starting fixture for 《寄生广告》第一场：`SC01 黑市诊所`.
 
-It intentionally verifies only the current baseline production facts—project, scene, shot, and planned reference assets. It does not claim that prompt compilation, generation, QC, retry, or Agent Runtime are complete.
+It intentionally verifies only the current baseline production facts—project, scene, shot, and planned reference assets. It does not prove a real Provider submission, media result, QC, retry, or Agent Runtime.
 
 ## Phase 0 exit criteria
 

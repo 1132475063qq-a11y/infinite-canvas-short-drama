@@ -2,6 +2,23 @@
 out/
 node_modules/
 docs/
+# Keep the synchronized production-canvas contract visible to Git while
+# leaving other generated or local documentation ignored.
+!docs/
+docs/*
+!docs/production-canvas/
+docs/production-canvas/*
+!docs/production-canvas/ecommerce-prototype-addendum.md
+!docs/production-canvas/ecommerce-agent-team-v1.2.1-codex-ready.md
+!docs/production-canvas/ecommerce-prototype-implementation-spec-v1.0.md
+!docs/production-canvas/film-generation-request-contract.md
+!docs/content/
+docs/content/*
+!docs/content/docs/
+docs/content/docs/*
+!docs/content/docs/backend/
+docs/content/docs/backend/*
+!docs/content/docs/backend/backend-database.mdx
 .env*
 !.env.example
 data/

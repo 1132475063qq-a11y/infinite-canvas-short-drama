@@ -56,6 +56,7 @@ export function artifactTypeForFilmNode(filmKind: CanvasNodeData["filmKind"]) {
     if (filmKind === "shot") return "shot_contract";
     if (filmKind === "acting") return "acting";
     if (filmKind === "prompt_pack") return "video_prompt_pack";
+    if (filmKind === "generation") return "generation_request";
     return undefined;
 }
 

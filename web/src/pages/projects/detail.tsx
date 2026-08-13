@@ -1,6 +1,6 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Alert, App, Button, Tooltip } from "antd";
-import { ArrowLeft, BookOpenText, Images, LayoutDashboard, LayoutGrid, Plus, Settings2, type LucideIcon } from "lucide-react";
+import { ArrowLeft, BookOpenText, FlaskConical, Images, LayoutDashboard, LayoutGrid, Plus, Settings2, type LucideIcon } from "lucide-react";
 import { Link, Navigate, useNavigate, useParams } from "react-router";
 
 import { createCanvasProjectWithRemoteSync } from "@/services/user-data-sync";
@@ -9,20 +9,29 @@ import { WorkspacePage } from "@/components/layout/workspace-page";
 import { WorkspaceErrorState, WorkspaceLoadingState } from "@/components/layout/workspace-state";
 import { WorkspaceSignalIcon } from "@/components/ui/aceternity/workspace-signal-icon";
 import { upsertProjectChapterStoryboard } from "@/lib/canvas/project-chapter-storyboard";
+import { ECOMMERCE_PROJECT_TYPE } from "@/ecommerce/domain/types";
 
 import ProjectAssetsView from "./detail/assets";
 import ProjectCanvasesView from "./detail/canvases";
 import ProjectChaptersView from "./detail/chapters";
+import EcommerceAssetsView from "./detail/ecommerce-assets";
+import EcommercePrototypeView from "./detail/ecommerce";
 import ProjectOverviewView from "./detail/overview";
 import ProjectSettingsView from "./detail/settings";
 
 type DetailView = "overview" | "chapters" | "canvases" | "assets" | "settings";
 
-const views: Array<{ key: DetailView; label: string; shortLabel: string; icon: LucideIcon }> = [
+const filmViews: Array<{ key: DetailView; label: string; shortLabel: string; icon: LucideIcon }> = [
     { key: "overview", label: "制作概览", shortLabel: "概览", icon: LayoutDashboard },
     { key: "chapters", label: "剧情章节", shortLabel: "章节", icon: BookOpenText },
     { key: "canvases", label: "项目画布", shortLabel: "画布", icon: LayoutGrid },
     { key: "assets", label: "角色与资产", shortLabel: "资产", icon: Images },
+    { key: "settings", label: "项目设置", shortLabel: "设置", icon: Settings2 },
+];
+
+const ecommerceViews: Array<{ key: DetailView; label: string; shortLabel: string; icon: LucideIcon }> = [
+    { key: "overview", label: "创意工作台", shortLabel: "工作台", icon: LayoutDashboard },
+    { key: "assets", label: "商品资产", shortLabel: "资产", icon: Images },
     { key: "settings", label: "项目设置", shortLabel: "设置", icon: Settings2 },
 ];
 
@@ -31,10 +40,13 @@ export default function ProjectDetailPage() {
     const navigate = useNavigate();
     const queryClient = useQueryClient();
     const { message } = App.useApp();
-    const activeView: DetailView = chapterId ? "chapters" : views.some((item) => item.key === view) ? view as DetailView : "overview";
     const detail = useQuery({ queryKey: ["project", projectId], queryFn: () => getProject(projectId), enabled: Boolean(projectId), refetchOnMount: "always" });
+    const isEcommerce = detail.data?.project.type === ECOMMERCE_PROJECT_TYPE;
+    const availableViews = isEcommerce ? ecommerceViews : filmViews;
+    const activeView: DetailView = chapterId ? "chapters" : availableViews.some((item) => item.key === view) ? view as DetailView : "overview";
     const refreshProject = () => { void queryClient.invalidateQueries({ queryKey: ["project", projectId] }); void queryClient.invalidateQueries({ queryKey: ["projects"] }); };
     const createCanvas = () => {
+        if (detail.data?.project.type === ECOMMERCE_PROJECT_TYPE) { message.info("电商 Prototype 当前使用创意工作台；共享画布投影会在后续阶段接入"); return; }
         if (detail.data?.project.status === "archived") { message.warning("项目已归档，请先在项目设置中恢复"); return; }
         const activeChapterId = chapterId || sessionStorage.getItem(`project-active-chapter:${projectId}`) || "";
         const unit = activeView === "chapters"
@@ -67,7 +79,8 @@ export default function ProjectDetailPage() {
 
     if (detail.isLoading) return <WorkspacePage><WorkspaceLoadingState label="正在打开项目工作台" detail="读取章节、画布、资产和当前进度" /></WorkspacePage>;
     if (detail.isError || !detail.data) return <WorkspacePage><WorkspaceErrorState title="项目不可用" description="项目不存在、已被删除，或当前账号没有访问权限。" actionLabel="返回项目中心" onRetry={() => navigate("/projects")} /></WorkspacePage>;
-    if (!chapterId && (!view || !views.some((item) => item.key === view))) return <Navigate to={`/projects/${projectId}/overview`} replace />;
+    if (isEcommerce && chapterId) return <Navigate to={`/projects/${projectId}/overview`} replace />;
+    if (!chapterId && (!view || !availableViews.some((item) => item.key === view))) return <Navigate to={`/projects/${projectId}/overview`} replace />;
     const chapterHref = projectChapterHref(detail.data.units, projectId, chapterId);
     return (
         <WorkspacePage className="project-workbench-page !overflow-hidden" fluid>
@@ -84,19 +97,19 @@ export default function ProjectDetailPage() {
                             </div>
                         </div>
                         <nav className="thin-scrollbar order-last mt-1 flex h-11 w-full min-w-0 items-center gap-0.5 overflow-x-auto lg:order-none lg:mt-0 lg:h-16 lg:flex-1 lg:border-l lg:border-border/55 lg:pl-3" aria-label="项目导航">
-                            {views.map((item) => { const Icon = item.icon; const active = item.key === activeView; const href = item.key === "chapters" ? chapterHref : `/projects/${projectId}/${item.key}`; return <Link key={item.key} to={href} className={`relative flex h-11 shrink-0 items-center gap-2 rounded-md px-2.5 text-[var(--fs-body)] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:px-3 ${active ? "bg-[var(--workspace-accent-soft)] font-medium text-foreground lg:after:absolute lg:after:inset-x-3 lg:after:bottom-0 lg:after:h-0.5 lg:after:rounded-full lg:after:bg-[var(--workspace-accent)]" : "text-foreground/52 hover:bg-foreground/[.045] hover:text-foreground"}`} aria-current={active ? "page" : undefined}><Icon className={`size-4 shrink-0 ${active ? "text-[var(--workspace-accent)]" : "text-foreground/45"}`} /><span className="sm:hidden">{item.shortLabel}</span><span className="hidden sm:inline">{item.label}</span></Link>; })}
+                            {availableViews.map((item) => { const Icon = item.icon; const active = item.key === activeView; const href = item.key === "chapters" ? chapterHref : `/projects/${projectId}/${item.key}`; return <Link key={item.key} to={href} className={`relative flex h-11 shrink-0 items-center gap-2 rounded-md px-2.5 text-[var(--fs-body)] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:px-3 ${active ? "bg-[var(--workspace-accent-soft)] font-medium text-foreground lg:after:absolute lg:after:inset-x-3 lg:after:bottom-0 lg:after:h-0.5 lg:after:rounded-full lg:after:bg-[var(--workspace-accent)]" : "text-foreground/52 hover:bg-foreground/[.045] hover:text-foreground"}`} aria-current={active ? "page" : undefined}><Icon className={`size-4 shrink-0 ${active ? "text-[var(--workspace-accent)]" : "text-foreground/45"}`} /><span className="sm:hidden">{item.shortLabel}</span><span className="hidden sm:inline">{item.label}</span></Link>; })}
                         </nav>
-                        <Tooltip title={activeView === "chapters" && detail.data.units.length ? "新建当前章节画布" : "新建项目画布"}><Button size="small" className="!h-9 !shrink-0 !px-2 sm:!px-3" icon={<Plus className="size-4" />} onClick={createCanvas} aria-label={activeView === "chapters" && detail.data.units.length ? "新建当前章节画布" : "新建项目画布"}><span className="hidden sm:inline">新建画布</span></Button></Tooltip>
+                        {isEcommerce ? <span className="hidden shrink-0 items-center gap-1.5 rounded-md border border-border/70 px-2.5 py-2 text-xs text-foreground/45 sm:inline-flex"><FlaskConical className="size-3.5" />Provider-free Prototype</span> : <Tooltip title={activeView === "chapters" && detail.data.units.length ? "新建当前章节画布" : "新建项目画布"}><Button size="small" className="!h-9 !shrink-0 !px-2 sm:!px-3" icon={<Plus className="size-4" />} onClick={createCanvas} aria-label={activeView === "chapters" && detail.data.units.length ? "新建当前章节画布" : "新建项目画布"}><span className="hidden sm:inline">新建画布</span></Button></Tooltip>}
                     </div>
                 </header>
                 {detail.data.project.status === "archived" ? <Alert type="warning" showIcon banner message="项目已归档，恢复后才能创建画布和生成任务" className="!border-x-0 !border-t-0" /> : null}
                 <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
                     <div className={activeView === "chapters" ? "min-h-0 flex-1" : "thin-scrollbar min-h-0 flex-1 overflow-y-auto px-3 py-5 sm:px-5 lg:px-8 lg:py-7"}>
                         <div className={activeView === "overview" ? "mx-auto w-full max-w-[1200px]" : activeView === "chapters" ? "h-full w-full" : "w-full"}>
-                            {activeView === "overview" ? <ProjectOverviewView detail={detail.data} refreshProject={refreshProject} onCreateCanvas={createCanvas} /> : null}
+                            {activeView === "overview" ? (isEcommerce ? <EcommercePrototypeView detail={detail.data} refreshProject={refreshProject} onCreateCanvas={createCanvas} /> : <ProjectOverviewView detail={detail.data} refreshProject={refreshProject} onCreateCanvas={createCanvas} />) : null}
                             {activeView === "chapters" ? <ProjectChaptersView detail={detail.data} refreshProject={refreshProject} onCreateCanvas={createCanvas} /> : null}
                             {activeView === "canvases" ? <ProjectCanvasesView detail={detail.data} refreshProject={refreshProject} onCreateCanvas={createCanvas} /> : null}
-                            {activeView === "assets" ? <ProjectAssetsView detail={detail.data} refreshProject={refreshProject} onCreateCanvas={createCanvas} /> : null}
+                            {activeView === "assets" ? (isEcommerce ? <EcommerceAssetsView detail={detail.data} refreshProject={refreshProject} onCreateCanvas={createCanvas} /> : <ProjectAssetsView detail={detail.data} refreshProject={refreshProject} onCreateCanvas={createCanvas} />) : null}
                             {activeView === "settings" ? <ProjectSettingsView detail={detail.data} refreshProject={refreshProject} onCreateCanvas={createCanvas} /> : null}
                         </div>
                     </div>

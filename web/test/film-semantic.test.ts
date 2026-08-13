@@ -124,17 +124,22 @@ describe("Film layout", () => {
         expect(positioned.find((node) => node.id === "manual-character")?.position).toEqual({ x: 101, y: 101 });
     });
 
-    test("Shot 生产链按 Shot、Acting、Prompt Pack 横向排列", () => {
+    test("Shot 生产链按 Shot、Acting、Prompt Pack、Generation Request 横向排列", () => {
         const scene = { ...filmNode("scene-01", "scene", { x: 13, y: 21 }), domainRef: { projectId: "project-01", sceneId: "scene-01" }, layout: { mode: "auto" as const, order: 1 } };
         const shot = { ...filmNode("shot-001", "shot"), domainRef: { projectId: "project-01", sceneId: "scene-01", shotId: "shot-001" }, layout: { mode: "auto" as const, order: 1 } };
         const acting = { ...filmNode("acting-001", "acting"), width: 300, height: 180, domainRef: { projectId: "project-01", sceneId: "scene-01", shotId: "shot-001" }, layout: { mode: "auto" as const, order: 1 } };
         const prompt = { ...filmNode("prompt-001", "prompt_pack"), width: 340, height: 180, domainRef: { projectId: "project-01", sceneId: "scene-01", shotId: "shot-001" }, layout: { mode: "auto" as const, order: 2 } };
+        const generation = { ...filmNode("generation-001", "generation"), width: 320, height: 180, domainRef: { projectId: "project-01", sceneId: "scene-01", shotId: "shot-001" }, layout: { mode: "auto" as const, order: 3 } };
 
-        const positioned = applyFilmAutoLayout([scene, shot, acting, prompt]);
+        const positioned = applyFilmAutoLayout([scene, shot, acting, prompt, generation]);
 
         expect(positioned.find((node) => node.id === "shot-001")?.position).toEqual({ x: 64, y: 312 });
         expect(positioned.find((node) => node.id === "acting-001")?.position).toEqual({ x: 528, y: 312 });
         expect(positioned.find((node) => node.id === "prompt-001")?.position).toEqual({ x: 880, y: 312 });
+        const promptPosition = positioned.find((node) => node.id === "prompt-001")?.position;
+        const generationPosition = positioned.find((node) => node.id === "generation-001")?.position;
+        expect(generationPosition).toBeDefined();
+        expect(generationPosition!.x).toBeGreaterThan(promptPosition!.x);
     });
 
     test("旧镜头画布会补上所属场景投影，但不会重建生产对象", () => {
@@ -190,6 +195,8 @@ describe("Film semantic contracts", () => {
                 { id: "contract-v2", projectId: "project-01", sceneId: "scene-01", shotId: "shot-01", artifactType: "shot_contract", objectVersion: 2, status: "ready", payloadJson: JSON.stringify({ shotSize: "MCU" }), sourceRefsJson: "[]", authorityRefsJson: "[]", createdAt: "2026-08-12T00:01:00Z", updatedAt: "2026-08-12T00:01:00Z" },
                 { id: "acting-v1", projectId: "project-01", sceneId: "scene-01", shotId: "shot-01", artifactType: "acting", objectVersion: 1, status: "draft", payloadJson: JSON.stringify({ objective: "conceal" }), sourceRefsJson: "[]", authorityRefsJson: "[]", createdAt: "2026-08-12T00:02:00Z", updatedAt: "2026-08-12T00:02:00Z" },
                 { id: "acting-v2", projectId: "project-01", sceneId: "scene-01", shotId: "shot-01", artifactType: "acting", objectVersion: 2, status: "ready", payloadJson: JSON.stringify({ objective: "redirect" }), sourceRefsJson: "[]", authorityRefsJson: "[]", createdAt: "2026-08-12T00:03:00Z", updatedAt: "2026-08-12T00:03:00Z" },
+                { id: "prompt-v1", projectId: "project-01", sceneId: "scene-01", shotId: "shot-01", artifactType: "video_prompt_pack", objectVersion: 1, status: "ready", payloadJson: JSON.stringify({ compiledPrompt: "A tense close-up in the clinic." }), sourceRefsJson: "[]", authorityRefsJson: "[]", createdAt: "2026-08-12T00:04:00Z", updatedAt: "2026-08-12T00:04:00Z" },
+                { id: "generation-v1", projectId: "project-01", sceneId: "scene-01", shotId: "shot-01", artifactType: "generation_request", objectVersion: 1, status: "draft", payloadJson: JSON.stringify({ promptArtifactId: "prompt-v1", promptArtifactVersion: 1, compiledPrompt: "A tense close-up in the clinic.", mediaType: "video", aspectRatio: "9:16", durationMs: 4200, outputIntent: "首轮镜头生成" }), sourceRefsJson: JSON.stringify(["contract-v2", "prompt-v1"]), authorityRefsJson: "[]", createdAt: "2026-08-12T00:05:00Z", updatedAt: "2026-08-12T00:05:00Z" },
             ],
         };
 
@@ -202,6 +209,16 @@ describe("Film semantic contracts", () => {
         const actingResolved = resolveFilmNode(actingNode, project);
         expect(actingResolved.artifact?.id).toBe("acting-v2");
         expect(actingResolved.contract.objective).toBe("redirect");
+
+        const promptNode = { ...filmNode("prompt-node", "prompt_pack"), domainRef: { projectId: "project-01", sceneId: "scene-01", shotId: "shot-01", artifactId: "prompt-v1" } };
+        const generationNode = { ...filmNode("generation-node", "generation"), domainRef: { projectId: "project-01", sceneId: "scene-01", shotId: "shot-01", artifactId: "generation-v1" } };
+        const generationResolved = resolveFilmNode(generationNode, project);
+        expect(generationResolved.artifact?.id).toBe("generation-v1");
+        expect(generationResolved.contract.promptArtifactId).toBe("prompt-v1");
+        expect(describeFilmConnection(promptNode, generationNode)).toEqual({
+            edgeType: "dependency",
+            filmPorts: { from: "prompt", to: "prompt" },
+        });
     });
 
     test("FilmNodeKind v2 与每种节点的端口合同完整冻结", () => {

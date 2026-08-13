@@ -54,6 +54,7 @@ export function CanvasToolbar({
     onAddFilmProp,
     onAddFilmActing,
     onAddFilmPromptPack,
+    onAddFilmGeneration,
 }: {
     selectedCount: number;
     workspaceMode: CanvasWorkspaceMode;
@@ -92,6 +93,7 @@ export function CanvasToolbar({
     onAddFilmProp?: () => void;
     onAddFilmActing?: () => void;
     onAddFilmPromptPack?: () => void;
+    onAddFilmGeneration?: () => void;
 }) {
     const rootRef = useRef<HTMLDivElement>(null);
     const dockRef = useRef<HTMLDivElement>(null);
@@ -201,6 +203,7 @@ export function CanvasToolbar({
         onAddFilmProp ? { id: "film-prop", label: "道具资产", icon: <Package />, badge: "PR", section: "node", onClick: () => runAddAction(onAddFilmProp) } : null,
         onAddFilmActing ? { id: "film-acting", label: "表演设计", icon: <Drama />, badge: "AC", section: "node", onClick: () => runAddAction(onAddFilmActing) } : null,
         onAddFilmPromptPack ? { id: "film-prompt-pack", label: "提示词包", icon: <Sparkles />, badge: "PP", section: "node", onClick: () => runAddAction(onAddFilmPromptPack) } : null,
+        onAddFilmGeneration ? { id: "film-generation", label: "生成请求", icon: <Clapperboard />, badge: "GR", section: "node", onClick: () => runAddAction(onAddFilmGeneration) } : null,
     ];
     const filmCommands = filmCommandCandidates.filter((command): command is CanvasCreateCommand => command !== null);
     const createCommands = [...filmCommands, ...addNodeCommands.map(toCommand)];

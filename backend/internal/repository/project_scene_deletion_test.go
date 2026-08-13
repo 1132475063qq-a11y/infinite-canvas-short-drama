@@ -53,6 +53,40 @@ func TestDeleteProjectRemovesFilmArtifactsInTransaction(t *testing.T) {
 	}
 }
 
+func TestDeleteProjectRemovesCanvasProjectionPatchesInTransaction(t *testing.T) {
+	repo, db := newProjectDeletionRepository(t)
+	project := model.Project{ID: "project-projection-delete", UserID: "user-1", Name: "任务投影删除项目"}
+	canvas := model.CanvasProject{ID: "canvas-projection-delete", UserID: project.UserID, ProjectID: project.ID, Title: "生产画布", PayloadJSON: `{}`}
+	patch := model.CanvasProjectionPatch{
+		ID:                    "patch-delete",
+		UserID:                project.UserID,
+		CanvasID:              canvas.ID,
+		NodeID:                "generation-node",
+		PatchKind:             "film_generation_task",
+		TargetProjectID:       project.ID,
+		TargetArtifactID:      "generation-request-v1",
+		TargetArtifactVersion: 1,
+		TaskID:                "task-delete",
+		Revision:              1,
+	}
+	for _, record := range []any{&project, &canvas, &patch} {
+		if err := db.Create(record).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	if err := repo.DeleteProject(project.UserID, project.ID); err != nil {
+		t.Fatal(err)
+	}
+	var count int64
+	if err := db.Model(&model.CanvasProjectionPatch{}).Where("target_project_id = ?", project.ID).Count(&count).Error; err != nil {
+		t.Fatal(err)
+	}
+	if count != 0 {
+		t.Fatalf("expected project canvas projection patches deleted, got %d", count)
+	}
+}
+
 func TestDeleteProjectUnitRemovesOnlyUnitScenes(t *testing.T) {
 	repo, db := newProjectDeletionRepository(t)
 	project := model.Project{ID: "project-unit-delete", UserID: "user-1", Name: "章节删除项目"}
@@ -87,10 +121,12 @@ func newProjectDeletionRepository(t *testing.T) (*Repository, *gorm.DB) {
 		&model.Project{},
 		&model.ProjectUnit{},
 		&model.CanvasProject{},
+		&model.CanvasProjectionPatch{},
 		&model.CanvasUnitLink{},
 		&model.Scene{},
 		&model.Shot{},
 		&model.FilmArtifact{},
+		&model.EcommerceArtifact{},
 		&model.ShotAssetReference{},
 		&model.WorkflowInstance{},
 		&model.WorkflowStepInstance{},

@@ -1,4 +1,4 @@
-# AI 短剧生产无限画布：继续开发入口
+# AI Creative Studio（短剧 + 电商）无限画布：继续开发入口
 
 更新时间：2026-08-13
 
@@ -31,9 +31,18 @@ codex/phase4-film-nodes
 - `/Users/xiangyuqin/Downloads/Infinite-Canvas-main.zip`：只参考 Provider Adapter、异步任务、Polling、WebSocket、Callback，不复制整体架构。
 - `/Users/xiangyuqin/Downloads/影视短剧AgentTeam_v1.3.1_Conflict_Hardened.zip`：只作为 Agent、Skill、Artifact、QC、Retry、LOCKED、Change Request 的影视知识参考；不要直接运行文件模式。
 
+合并产品的 Ecommerce 实施附录：
+
+- `docs/production-canvas/ecommerce-prototype-addendum.md`：当前 Ecommerce Domain 的冻结合同、Prototype A/B 边界和下一步编码范围。
+- `docs/production-canvas/ecommerce-agent-team-v1.2.1-codex-ready.md`：完整架构基准、P0 执行协议和失败/成本/数据边界。
+- `docs/production-canvas/ecommerce-prototype-implementation-spec-v1.0.md`：直接给 Codex 的 Prototype 任务书。
+- `docs/production-canvas/film-generation-request-contract.md`：Film `generation_request` 的版本、来源、安全和 Task 边界。
+- `/Users/xiangyuqin/.codex/attachments/d20d2872-0042-4e42-a1a8-a704ac1014d6/pasted-text.txt`：Ecommerce 合并接管提示词的来源证据；不把其中的设计文字当成已实现能力。
+- `/Users/xiangyuqin/Downloads/电商创意工作台设计.md`：完整 Ecommerce 架构审查聊天记录；已完整读取并将 P0、Benchmark、Provider、Canvas Scope、失败/成本/隐私修正同步到仓库文档。
+
 ## 2. 产品边界
 
-目标是影视生产操作系统，不是普通无限画布、ComfyUI 节点工具或模型集合器。
+目标是以影视生产和电商创意生产为两个隔离 Domain 的 AI Creative Studio，不是普通无限画布、ComfyUI 节点工具或模型集合器。
 
 必须坚持：
 
@@ -42,6 +51,7 @@ codex/phase4-film-nodes
 - 不推翻现有 React、Go、PostgreSQL、Redis 和 Canvas 工程。
 - API Key 只能保存在后端 Secret/配置层，不能写入前端节点或提交到 Git。
 - 第一条真实闭环使用《寄生广告》SC01。
+- Ecommerce 不新建第二套画布；它复用 Shared Canvas Core，但不得把电商字段塞进 Film Domain 或 `FilmArtifact`。
 
 ## 3. 已完成状态
 
@@ -130,7 +140,7 @@ web/src/pages/canvas/canvas-project-top-bar.tsx
 web/test/production-ui-shell.test.ts
 ```
 
-### Phase 4：影视生产节点（第一批进行中）
+### Phase 4：影视生产节点（Generation Request 批完成，阶段仍进行中）
 
 已完成本批：
 
@@ -146,8 +156,50 @@ web/test/production-ui-shell.test.ts
 - Acting 与 Prompt Pack 每次保存都会创建新的后端 Artifact 版本并递增 Project revision；Canvas 只保存 DomainRef 投影。
 - 新增 Shot → Acting、Shot → Prompt Pack、Acting → Prompt Pack 的 typed connection；自动布局按 Shot、Acting、Prompt Pack 横向排列。
 - Inspector、领域卡片、节点菜单、刷新恢复和最新版本解析已全部接通。
+- 新增 `generation_request` FilmArtifact：每次保存均冻结当前 Prompt Pack 的 Artifact ID、版本和 compiled prompt，作为未来 Provider Gateway 的可复现输入。
+- Generation Request 追加 Shot Contract、Prompt Pack 与 Shot AssetVersion 到 SourceRefs；服务端拒绝 API Key、Token、Secret、Credential、Authorization、Password 和 Provider Key 字段。
+- 新增 Prompt Pack → Generation Request typed connection、画布创建入口、专用节点卡、Inspector、显式“载入最新 Prompt Pack”动作和 Shot Pipeline 自动布局。
+- 新增只读 `Generation Request → Task Draft` 合同：后端总是按画布指定的 Artifact ID 读取精确请求版本，编译出 provider-independent `gatewayInput`、来源、指纹和阻塞原因；它不会创建 Task、计费单、ProviderJob、Result 或 `DomainRef.taskId`。
+- Inspector 的 Execution 标签可查看只读任务合同和只读后端渠道候选；Generation Request 可显式保存为 draft / review / ready / locked。只有 ready / locked 可进入未来网关路由等待态，当前仍没有提交按钮。
+- 新增服务端 `CanvasProjectionPatch`：Task 绑定独立于浏览器整份 `CanvasProject.PayloadJSON`，只在 Canvas 节点仍精确指向同一 Generation Request Artifact 版本时叠加 `taskId`；浏览器保存会剥离伪造/旧的 `taskId`，整份画布替换也不会擦除仍存在 Canvas 的服务器 Patch。
+- `Task` 仍是未来异步执行事实；当前 `generation` 节点不提交 Provider、不生成 Result，也不会记录任何前端密钥。
+- 本次新增的 Generation Request、Provider Route Catalog、Canvas Projection Patch 合同测试和画布语义测试已写入工作区；按当前 `AGENTS.md` 的默认验证纪律，本轮未运行测试、typecheck、build 或浏览器实测，不能用此前 Acting / Prompt Pack 的验收结果代替本批验收。
 
-尚未完成：Generation、Result、QC、Retry 等后续节点，以及《寄生广告》数据库 Golden Project。
+尚未完成：Provider Gateway 原子 Task 创建、GenerationAttempt、ProviderJob、Result、QC、Retry，以及《寄生广告》数据库 Golden Project。
+
+### Ecommerce Creative Studio：Prototype A Provider-free 合同阶段
+
+已完成：
+
+- 完成 Film V2 + Ecommerce Creative Studio 的合并架构审查和文档同步。
+- 冻结 `short-drama` / `ecommerce` 两种 Project Domain 的隔离原则。
+- 冻结三个 Ecommerce Agent：`ProductIntelligenceAgent`、`CreativeDirectorAgent`、`SceneDirectorAgent`。
+- 冻结两个 Prototype Skill：`still-life.lifestyle-tabletop`、`fashion.natural-walk`。
+- 冻结 ProductDNA、CreativeDirection、ScenePlan、CreativeShotPlan、ExpectedRelationGraph、GenerationJob、GeneratedAsset、QAReport 的命名和版本原则。
+- 冻结 Template-Based Skill Executor、Provider Bake-off、三层 QA、A/B/C Benchmark 与 GO/MODIFY/STOP 门禁。
+- 补齐完整审查记录要求的 P0 顺序：Schema、Skill 文件协议、Executor、ExpectedRelationGraph、Benchmark Evaluation、Provider Evaluation。
+- 明确 Benchmark 采用 1–5 分、Blind Preference 和效果量/趋势；不把统计显著性、固定胜率、示例成本或固定保存天数写成硬条件。
+- 明确 Prototype UI 可以是 CLI、简单表单、Developer panel 或最小 Canvas 投影，不先做完整 Ecommerce Canvas。
+
+当前明确未完成：
+
+- Ecommerce Agent Runtime、完整 Ecommerce Canvas 和真实 Provider 接入。
+- 真实图片 Provider Bake-off、真实生成、媒体质量和人工盲测。
+
+已开始但仍属于 Provider-free 合同层：
+
+- `web/src/ecommerce/**` 已加入 ProductDNA、CreativeDirection、ScenePlan、CreativeShotPlan、ExpectedRelationGraph、Artifact 版本、Skill Executor、Result Grid 和 Basic QA 的纯 TypeScript 合同。
+- `web/src/ecommerce/skills/definitions/still-life.lifestyle-tabletop/**` 已加入第一份可加载 Skill 文件协议和四个结构化 variation。
+- `web/test/ecommerce-prototype.test.ts` 已覆盖 Prototype A 的四 variation、不可变 revision、关系图绑定和 `UNCERTAIN` QA 语义。
+- 后端已加入独立 `EcommerceArtifact` 表、版本追加 API、项目类型校验和权限边界。
+- 项目创建页已加入 `short-drama` / `ecommerce` 选择；电商项目进入独立 Prototype A 开发面板，不进入 Film 章节/画布投影。
+- 电商项目的资产页使用独立商品资产投影，只允许引用/移除商品媒体，不显示角色卡和短剧专用字段。
+- 开发面板可运行无 Provider 合同链，追加保存 ProductDNA、CreativeDirection、ScenePlan、CreativeShotPlan、QAReport，并从后端恢复四槽位 Result Grid。
+- `web/src/ecommerce/evaluation/provider-evaluation.ts` 已加入 Provider Evaluation 记录合同：候选能力、统一设置指纹、Case、attempt、结果/成本/失败证据、1–5 分维度、Blind Preference 和显式 GO/MODIFY/STOP 决策；它不会调用真实 Provider 或自动判定 GO。
+- `web/test/ecommerce-provider-evaluation.test.ts` 已覆盖计划骨架、设置指纹、成功/失败尝试、评分、盲测引用和显式决策边界；本次未运行测试，按项目验证纪律保留为待验证。
+- 当前仍没有宣称 Ecommerce Agent Runtime、真实 Provider、浏览器媒体生成或媒体质量已经完成。
+
+正式边界见：`docs/production-canvas/ecommerce-prototype-addendum.md`。本节区分“合同已冻结”和“Provider-free 合同骨架已实现”，不代表完整功能已实现。
 
 核心文件：
 
@@ -259,27 +311,43 @@ LOCAL_UID=$(id -u) LOCAL_GID=$(id -g) docker compose -f docker-compose.dev.yml u
 
 这些属于后续阶段，不得提前宣称完成。
 
-## 6. 下一步：Phase 4 Film Nodes
+## 6. 下一步：Film Phase 4 与 Ecommerce Prototype A 并行但隔离
 
-不要直接进入 Provider Gateway。最新版详细规划明确规定：
+不要直接接入真实 Provider Gateway。最新版详细规划明确规定：
 
 ```text
+Film：
 Phase 3 = UI Shell
 Phase 4 = Film Nodes
 Phase 5 = Provider Gateway v2
+
+Ecommerce：
+
+文档合同冻结
+→ Prototype A 无 Provider 运行骨架
+→ Provider Evaluation 记录合同（已完成）
+→ 真实 Provider Bake-off（下一步）
+→ Prototype A 真实生成/QA
+→ Prototype B
+→ GO / MODIFY / STOP
 ```
 
 Phase 3 已通过自动与浏览器验收，下一会话不要重做 UI Shell。Phase 0 仍需另补数据库 schema 快照和恢复说明。
 
-### Phase 4：Film Nodes 下一批
+### Phase 4：Film Nodes 当前边界
 
-下一阶段实现：
+已完成：
 
-- 在现有 Shot → Acting → Prompt Pack 后接入 GenerationRequest / Generation 节点事实模型。
-- 先冻结请求、任务、尝试、结果的领域边界和状态机；Canvas 仍只做 Projection。
+- 已接入 `GenerationRequest` 版本事实模型、Prompt Pack typed port、Inspector、版本/状态显示和基础布局。
+- 已建立只读 `GenerationRequest → Task Draft` 合同，冻结精确 Artifact 版本、Gateway 输入、任务类型、状态/阻塞原因与指纹；Canvas 仍只做 Projection。
+- 已建立只读 Provider Route Catalog：仅从后端 system channel 中列出与冻结请求媒体类型匹配的模型，并返回脱敏的能力、计费和就绪状态；它不创建 Task、不预扣积分、不调用 Provider，也不回写 Canvas。
+- 已建立 revision-safe `CanvasProjectionPatch`：服务端 Task 绑定与完整浏览器 Canvas 文档分离，读取时仅按精确 Generation Request 版本叠加，浏览器无法伪造或擦除绑定。
 - API Key 继续只存在后端 Secret/渠道配置层，任何 Generation 节点都不得保存密钥。
-- 完成 Generation 与 Prompt Pack 的 typed port、Inspector、版本/状态显示和基础布局。
-- 本批只建立 Provider Gateway 边界与可测试的任务合同；不要同时接入多家 Provider，也不提前实现 Agent Runtime。
+
+下一批才可讨论：
+
+- 由 Provider Gateway 在同一后端事务内重新解析已选系统渠道、校验能力/计费、创建标准 `canvas_*` Task，并创建/更新对应的 Projection Patch；当前的独立绑定方法不能替代该原子提交。
+- 不要同时接入多家 Provider、真实模型调用或 Agent Runtime。
 
 优先复用并增量升级：
 
@@ -287,6 +355,13 @@ Phase 3 已通过自动与浏览器验收，下一会话不要重做 UI Shell。
 - `web/src/film/inspector/film-inspector.tsx`
 - `web/src/film/domain/`
 - 后端 Scene / Shot / Asset / AssetVersion 现有服务与 API
+
+Ecommerce 下一步只做：
+
+- 在现有 Provider Evaluation 记录合同和开发面板基础上，接入用户明确提供且实际可调用的候选渠道，固定统一输入、成本记录和盲测数据结构并完成真实 Bake-off。
+- 保持 `web/src/ecommerce/**` 和后端 Ecommerce 合同独立，不修改 `web/src/film/**` 的语义。
+- 真实生成前不扩展完整 Ecommerce Canvas，不接入多家 Provider，也不实现完整 Ecommerce V1。
+- 不提前接入多家 Provider，不实现完整 Ecommerce V1，不把 Ecommerce 目标写成已完成。
 
 ## 7. 明确未完成的 Phase 2 扩展项
 
@@ -304,17 +379,20 @@ Phase 3 已通过自动与浏览器验收，下一会话不要重做 UI Shell。
 2. 先运行 `git status -sb`，不要覆盖用户改动。
 3. 不重做已完成的 Phase 1/Phase 2。
 4. 每次只做当前阶段，不提前接模型、不提前实现复杂 Agent Runtime。
-5. 修改后运行测试、typecheck、build。
+5. 按 `AGENTS.md` 的当前验证纪律执行；默认不自动运行测试、typecheck、build，用户明确要求后再选择最小充分验证。
 6. UI 功能必须做真实浏览器交互验证；静态测试不能替代点击、拖拽和刷新验证。
 7. 对验收结果明确区分：代码存在、自动测试通过、浏览器交互通过、真实 Provider/媒体质量通过。
+8. 进入 Ecommerce 工作前必须先读 `docs/production-canvas/ecommerce-prototype-addendum.md`；Ecommerce 当前 Gate 是 `READY FOR PROTOTYPE IMPLEMENTATION`，不是 `READY FOR FULL V1`。
+9. Film 与 Ecommerce 共享 Canvas Core，但必须保持 Domain、Artifact、Skill、Evaluator 和权限隔离。
 
 ## 9. 给新 Codex 会话的第一条指令
 
 ```text
-请先完整读取 CONTINUE-HERE.md 和
+请先完整读取 CONTINUE-HERE.md、
+docs/production-canvas/ecommerce-prototype-addendum.md 和
 /Users/xiangyuqin/Downloads/短剧AI无限画布_Production_Canvas_v2_超详细发展规划.md。
 检查当前分支、Git 状态和最近提交，不要重做 Phase 1/Phase 2。
-Phase 3 已完成并通过 78/78 自动测试与三档浏览器验收，不要重做。
-Phase 4 已完成 Scene、Shot、Character、Location、Prop、Acting、Prompt Pack 的事实源投影。
-下一步继续 Phase 4 的 GenerationRequest / Generation 节点与 Provider Gateway 边界审计；先冻结数据合同、状态机和安全边界，再编码，不要提前接入多家 Provider 或 Agent Runtime。
+Film Phase 3 已完成并通过 78/78 自动测试与三档浏览器验收，不要重做。
+Phase 4 已完成 Scene、Shot、Character、Location、Prop、Acting、Prompt Pack、Generation Request、只读 Task Draft、只读 Provider Route Catalog 和 revision-safe Canvas Projection Patch 的事实源投影。
+Film 下一步只设计 Provider Gateway 的原子 Task 创建，不直接接入多家 Provider；Ecommerce 已完成 Prototype A 无 Provider 合同骨架和 Provider Evaluation 记录合同，下一步只在用户提供真实渠道/素材后执行 Bake-off。两条线都先冻结数据合同、状态机和安全边界，不要提前接入 Full Ecommerce V1 或复杂 Agent Runtime。
 ```

@@ -76,8 +76,9 @@ type ProjectDetail struct {
 	Workflows       []ProjectWorkflowDetail       `json:"workflows"`
 	Scenes          []model.Scene                 `json:"scenes"`
 	Shots           []model.Shot                  `json:"shots"`
-	FilmArtifacts   []model.FilmArtifact          `json:"filmArtifacts"`
-	ShotReferences  []model.ShotAssetReference    `json:"shotReferences"`
+	FilmArtifacts      []model.FilmArtifact         `json:"filmArtifacts"`
+	EcommerceArtifacts []model.EcommerceArtifact   `json:"ecommerceArtifacts"`
+	ShotReferences     []model.ShotAssetReference   `json:"shotReferences"`
 	AssetCandidates []model.ProjectAssetCandidate `json:"assetCandidates"`
 }
 
@@ -173,6 +174,10 @@ func (s *Service) ProjectDetail(userID string, id string) (ProjectDetail, error)
 	if err != nil {
 		return ProjectDetail{}, err
 	}
+	ecommerceArtifacts, err := s.repo.ProjectEcommerceArtifacts(project.ID)
+	if err != nil {
+		return ProjectDetail{}, err
+	}
 	shotReferences, err := s.repo.ProjectShotAssetReferences(project.ID)
 	if err != nil {
 		return ProjectDetail{}, err
@@ -181,7 +186,7 @@ func (s *Service) ProjectDetail(userID string, id string) (ProjectDetail, error)
 	if err != nil {
 		return ProjectDetail{}, err
 	}
-	return ProjectDetail{Project: *project, Units: units, Canvases: canvases, CanvasUnitLinks: canvasUnitLinks, Assets: assets, Workflows: workflows, Scenes: scenes, Shots: shots, FilmArtifacts: filmArtifacts, ShotReferences: shotReferences, AssetCandidates: candidates}, nil
+	return ProjectDetail{Project: *project, Units: units, Canvases: canvases, CanvasUnitLinks: canvasUnitLinks, Assets: assets, Workflows: workflows, Scenes: scenes, Shots: shots, FilmArtifacts: filmArtifacts, EcommerceArtifacts: ecommerceArtifacts, ShotReferences: shotReferences, AssetCandidates: candidates}, nil
 }
 
 // ensureLegacyShotContracts promotes pre-Phase-4 shots into the same immutable
@@ -230,9 +235,9 @@ func (s *Service) CreateProject(userID string, req CreateProjectRequest) (model.
 	if name == "" {
 		return model.Project{}, BadAuthRequest("项目名称不能为空")
 	}
-	projectType := strings.TrimSpace(req.Type)
-	if projectType == "" {
-		projectType = "short-drama"
+	projectType, err := normalizeProjectType(req.Type)
+	if err != nil {
+		return model.Project{}, err
 	}
 	aspectRatio := strings.TrimSpace(req.AspectRatio)
 	if aspectRatio == "" {
@@ -273,7 +278,11 @@ func (s *Service) UpdateProject(userID string, id string, req UpdateProjectReque
 		project.Name = name
 	}
 	if value := strings.TrimSpace(req.Type); value != "" {
-		project.Type = value
+		projectType, typeErr := normalizeProjectType(value)
+		if typeErr != nil {
+			return model.Project{}, typeErr
+		}
+		project.Type = projectType
 	}
 	if value := strings.TrimSpace(req.AspectRatio); value != "" {
 		project.AspectRatio = value
@@ -309,6 +318,19 @@ func (s *Service) UpdateProject(userID string, id string, req UpdateProjectReque
 		return model.Project{}, err
 	}
 	return *project, nil
+}
+
+func normalizeProjectType(value string) (string, error) {
+	projectType := strings.TrimSpace(value)
+	if projectType == "" {
+		return model.ProjectTypeShortDrama, nil
+	}
+	switch projectType {
+	case model.ProjectTypeShortDrama, model.ProjectTypeEcommerce:
+		return projectType, nil
+	default:
+		return "", BadAuthRequest("不支持的项目类型")
+	}
 }
 
 func (s *Service) DeleteProject(userID string, id string) error {

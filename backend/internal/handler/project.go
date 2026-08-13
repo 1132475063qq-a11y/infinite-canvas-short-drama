@@ -576,6 +576,80 @@ func RegisterProjectRoutes(r *gin.RouterGroup, svc *service.Service) {
 		}
 		ok(c, gin.H{"artifact": artifact})
 	})
+	r.GET("/projects/:id/film-generation-requests/:artifactId/task-draft", func(c *gin.Context) {
+		user, err := currentUser(c, svc)
+		if err != nil {
+			failService(c, err)
+			return
+		}
+		draft, err := svc.FilmGenerationTaskDraft(user.ID, c.Param("id"), c.Param("artifactId"))
+		if err != nil {
+			if service.IsProjectNotFound(err) {
+				fail(c, http.StatusNotFound, err)
+				return
+			}
+			failService(c, err)
+			return
+		}
+		ok(c, gin.H{"taskDraft": draft})
+	})
+	r.GET("/projects/:id/film-generation-requests/:artifactId/provider-routes", func(c *gin.Context) {
+		user, err := currentUser(c, svc)
+		if err != nil {
+			failService(c, err)
+			return
+		}
+		catalog, err := svc.FilmGenerationProviderRoutes(user.ID, c.Param("id"), c.Param("artifactId"))
+		if err != nil {
+			if service.IsProjectNotFound(err) {
+				fail(c, http.StatusNotFound, err)
+				return
+			}
+			failService(c, err)
+			return
+		}
+		ok(c, gin.H{"providerRoutes": catalog})
+	})
+	r.GET("/projects/:id/ecommerce-artifacts", func(c *gin.Context) {
+		user, err := currentUser(c, svc)
+		if err != nil {
+			failService(c, err)
+			return
+		}
+		artifacts, err := svc.ProjectEcommerceArtifacts(user.ID, c.Param("id"))
+		if err != nil {
+			if service.IsProjectNotFound(err) {
+				fail(c, http.StatusNotFound, err)
+				return
+			}
+			failService(c, err)
+			return
+		}
+		ok(c, gin.H{"artifacts": artifacts})
+	})
+	r.POST("/projects/:id/ecommerce-artifacts", func(c *gin.Context) {
+		user, err := currentUser(c, svc)
+		if err != nil {
+			failService(c, err)
+			return
+		}
+		c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 2<<20)
+		var req service.SaveProjectEcommerceArtifactRequest
+		if err := c.ShouldBindJSON(&req); err != nil {
+			fail(c, http.StatusBadRequest, err)
+			return
+		}
+		artifact, err := svc.SaveProjectEcommerceArtifact(user.ID, c.Param("id"), req)
+		if err != nil {
+			if service.IsProjectNotFound(err) {
+				fail(c, http.StatusNotFound, err)
+				return
+			}
+			failService(c, err)
+			return
+		}
+		ok(c, gin.H{"artifact": artifact})
+	})
 	r.POST("/projects/:id/scenes", func(c *gin.Context) {
 		user, err := currentUser(c, svc)
 		if err != nil {

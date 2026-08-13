@@ -899,6 +899,64 @@ func (r *Repository) CanvasProjectForUser(userID string, id string) (*model.Canv
 	return &project, nil
 }
 
+func (r *Repository) CanvasProjectionPatchesForCanvas(userID string, canvasID string) ([]model.CanvasProjectionPatch, error) {
+	var patches []model.CanvasProjectionPatch
+	err := r.db.Where("user_id = ? AND canvas_id = ?", userID, canvasID).Order("updated_at asc").Find(&patches).Error
+	return patches, err
+}
+
+// UpsertCanvasProjectionPatch records a server-owned projection binding and
+// touches the CanvasProject summary timestamp so connected clients discover it
+// on their next normal sync. It never rewrites PayloadJSON.
+func (r *Repository) UpsertCanvasProjectionPatch(patch *model.CanvasProjectionPatch, canvasUpdatedAt time.Time) (*model.CanvasProjectionPatch, error) {
+	if patch == nil {
+		return nil, gorm.ErrInvalidData
+	}
+	result := *patch
+	err := r.db.Transaction(func(tx *gorm.DB) error {
+		var existing model.CanvasProjectionPatch
+		err := tx.First(&existing, "user_id = ? AND canvas_id = ? AND node_id = ? AND patch_kind = ?", patch.UserID, patch.CanvasID, patch.NodeID, patch.PatchKind).Error
+		if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+			return err
+		}
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			result.Revision = 1
+			if err := tx.Create(&result).Error; err != nil {
+				return err
+			}
+		} else if existing.TargetProjectID == patch.TargetProjectID && existing.TargetArtifactID == patch.TargetArtifactID && existing.TargetArtifactVersion == patch.TargetArtifactVersion && existing.TaskID == patch.TaskID {
+			result = existing
+			return nil
+		} else {
+			result.ID = existing.ID
+			result.CreatedAt = existing.CreatedAt
+			result.Revision = existing.Revision + 1
+			if err := tx.Model(&model.CanvasProjectionPatch{}).Where("id = ?", existing.ID).Updates(map[string]any{
+				"target_project_id":       result.TargetProjectID,
+				"target_artifact_id":      result.TargetArtifactID,
+				"target_artifact_version": result.TargetArtifactVersion,
+				"task_id":                 result.TaskID,
+				"revision":                result.Revision,
+				"updated_at":              result.UpdatedAt,
+			}).Error; err != nil {
+				return err
+			}
+		}
+		updated := tx.Model(&model.CanvasProject{}).Where("id = ? AND user_id = ?", result.CanvasID, result.UserID).Update("updated_at", canvasUpdatedAt)
+		if updated.Error != nil {
+			return updated.Error
+		}
+		if updated.RowsAffected != 1 {
+			return gorm.ErrRecordNotFound
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &result, nil
+}
+
 func (r *Repository) UpsertCanvasProject(project *model.CanvasProject) error {
 	result := r.db.Model(&model.CanvasProject{}).
 		Where("id = ? AND user_id = ?", project.ID, project.UserID).
@@ -910,7 +968,12 @@ func (r *Repository) UpsertCanvasProject(project *model.CanvasProject) error {
 }
 
 func (r *Repository) DeleteCanvasProject(userID string, id string) error {
-	return r.db.Delete(&model.CanvasProject{}, "id = ? AND user_id = ?", id, userID).Error
+	return r.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Delete(&model.CanvasProjectionPatch{}, "user_id = ? AND canvas_id = ?", userID, id).Error; err != nil {
+			return err
+		}
+		return tx.Delete(&model.CanvasProject{}, "id = ? AND user_id = ?", id, userID).Error
+	})
 }
 
 func (r *Repository) Projects(userID string) ([]model.Project, error) {
@@ -941,6 +1004,9 @@ func (r *Repository) UpdateProject(project *model.Project) error {
 
 func (r *Repository) DeleteProject(userID string, id string) error {
 	return r.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Delete(&model.CanvasProjectionPatch{}, "user_id = ? AND target_project_id = ?", userID, id).Error; err != nil {
+			return err
+		}
 		if err := tx.Model(&model.CanvasProject{}).Where("user_id = ? AND project_id = ?", userID, id).Update("project_id", "").Error; err != nil {
 			return err
 		}
@@ -952,6 +1018,9 @@ func (r *Repository) DeleteProject(userID string, id string) error {
 			return err
 		}
 		if err := tx.Where("project_id = ?", id).Delete(&model.FilmArtifact{}).Error; err != nil {
+			return err
+		}
+		if err := tx.Where("project_id = ?", id).Delete(&model.EcommerceArtifact{}).Error; err != nil {
 			return err
 		}
 		if err := tx.Where("project_id = ?", id).Delete(&model.Shot{}).Error; err != nil {
@@ -1146,6 +1215,9 @@ func (r *Repository) AssignCanvasToProject(userID string, canvasID string, proje
 
 func (r *Repository) UnassignCanvasFromProject(userID string, projectID string, canvasID string, payloadJSON string, updatedAt time.Time) error {
 	return r.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Delete(&model.CanvasProjectionPatch{}, "user_id = ? AND canvas_id = ? AND target_project_id = ?", userID, canvasID, projectID).Error; err != nil {
+			return err
+		}
 		if err := tx.Where("project_id = ? AND canvas_id = ?", projectID, canvasID).Delete(&model.CanvasUnitLink{}).Error; err != nil {
 			return err
 		}
@@ -1399,11 +1471,71 @@ func (r *Repository) ProjectFilmArtifacts(projectID string) ([]model.FilmArtifac
 	return artifacts, err
 }
 
+func (r *Repository) ProjectEcommerceArtifacts(projectID string) ([]model.EcommerceArtifact, error) {
+	var artifacts []model.EcommerceArtifact
+	err := r.db.Where("project_id = ?", projectID).Order("artifact_key asc, artifact_type asc, revision desc").Find(&artifacts).Error
+	return artifacts, err
+}
+
+func (r *Repository) LatestEcommerceArtifact(projectID string, artifactKey string, artifactType string) (*model.EcommerceArtifact, error) {
+	var artifact model.EcommerceArtifact
+	err := r.db.Where("project_id = ? AND artifact_key = ? AND artifact_type = ?", projectID, artifactKey, artifactType).
+		Order("revision desc").First(&artifact).Error
+	if err != nil {
+		return nil, err
+	}
+	return &artifact, nil
+}
+
+// SaveEcommerceArtifactVersion 只追加新版本，并在同一事务中推进项目 revision。
+// 已 finalized 的版本不会被更新或删除；调用方只能写入同一 artifact key 的下一版。
+func (r *Repository) SaveEcommerceArtifactVersion(artifact *model.EcommerceArtifact) error {
+	return r.db.Transaction(func(tx *gorm.DB) error {
+		var project model.Project
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&project, "id = ?", artifact.ProjectID).Error; err != nil {
+			return err
+		}
+		var latest int
+		if err := tx.Model(&model.EcommerceArtifact{}).
+			Where("project_id = ? AND artifact_key = ? AND artifact_type = ?", artifact.ProjectID, artifact.ArtifactKey, artifact.ArtifactType).
+			Select("COALESCE(MAX(revision), 0)").Scan(&latest).Error; err != nil {
+			return err
+		}
+		artifact.Revision = latest + 1
+		if err := tx.Create(artifact).Error; err != nil {
+			return err
+		}
+		result := tx.Model(&model.Project{}).Where("id = ?", artifact.ProjectID).Updates(map[string]any{
+			"revision": gorm.Expr("revision + 1"),
+			"updated_at": artifact.UpdatedAt,
+		})
+		if result.Error != nil {
+			return result.Error
+		}
+		if result.RowsAffected != 1 {
+			return gorm.ErrRecordNotFound
+		}
+		return nil
+	})
+}
+
 func (r *Repository) LatestFilmArtifact(projectID string, shotID string, artifactType string) (*model.FilmArtifact, error) {
 	var artifact model.FilmArtifact
 	err := r.db.Where("project_id = ? AND shot_id = ? AND artifact_type = ?", projectID, shotID, artifactType).
 		Order("object_version desc").First(&artifact).Error
 	if err != nil {
+		return nil, err
+	}
+	return &artifact, nil
+}
+
+// FilmArtifactForProject returns one immutable Film Artifact version. Unlike
+// LatestFilmArtifact, this method deliberately does not advance to a newer
+// version: execution contracts must be built from the exact request snapshot
+// selected on the canvas.
+func (r *Repository) FilmArtifactForProject(projectID string, artifactID string) (*model.FilmArtifact, error) {
+	var artifact model.FilmArtifact
+	if err := r.db.First(&artifact, "id = ? AND project_id = ?", artifactID, projectID).Error; err != nil {
 		return nil, err
 	}
 	return &artifact, nil
@@ -1712,6 +1844,23 @@ func (r *Repository) DeleteCanvasShare(userID string, projectID string) error {
 
 func (r *Repository) ReplaceCanvasProjects(userID string, projects []model.CanvasProject) error {
 	return r.db.Transaction(func(tx *gorm.DB) error {
+		// Full-document replacement is used by legacy/local canvas sync. Keep
+		// patches for canvases that still exist: an older browser snapshot must
+		// not silently erase a server-owned Task binding. Patches for omitted
+		// canvases are deleted because the canvas itself is being deleted.
+		incomingCanvasIDs := make([]string, 0, len(projects))
+		for _, project := range projects {
+			incomingCanvasIDs = append(incomingCanvasIDs, project.ID)
+		}
+		patches := tx.Where("user_id = ?", userID)
+		if len(incomingCanvasIDs) == 0 {
+			patches = patches.Delete(&model.CanvasProjectionPatch{})
+		} else {
+			patches = patches.Where("canvas_id NOT IN ?", incomingCanvasIDs).Delete(&model.CanvasProjectionPatch{})
+		}
+		if patches.Error != nil {
+			return patches.Error
+		}
 		if err := tx.Delete(&model.CanvasProject{}, "user_id = ?", userID).Error; err != nil {
 			return err
 		}

@@ -1,7 +1,7 @@
 import { useMemo, useState, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { App, Button, Form, Input, Modal, Select } from "antd";
-import { ArrowRight, BookOpenText, FolderKanban, Images, LayoutGrid, Plus, Search } from "lucide-react";
+import { ArrowRight, BookOpenText, FolderKanban, Images, LayoutGrid, Plus, Search, ShoppingBag } from "lucide-react";
 import { Link, useNavigate, useSearchParams } from "react-router";
 
 import { CollectionGrid, ListToolbar, PageHeader, WorkspacePage } from "@/components/layout/workspace-page";
@@ -13,7 +13,7 @@ import { createProject, listProjects, type ProjectSummary } from "@/services/api
 
 import { sourceTypeLabel } from "./detail/shared";
 
-type ProjectForm = { name: string; aspectRatio: string; sourceType: string };
+type ProjectForm = { name: string; type: "short-drama" | "ecommerce"; aspectRatio: string; sourceType: string };
 
 export default function ProjectsPage() {
     const navigate = useNavigate();
@@ -57,8 +57,8 @@ export default function ProjectsPage() {
         <WorkspacePage className="library-page" grid>
             <PageHeader
                 icon="projects"
-                title="短剧创作"
-                description="按时间浏览故事项目，继续最近的章节、画布与镜头。"
+                title="创作项目"
+                description="按领域进入短剧生产或电商创意工作台，继续最近的内容与资产。"
                 meta={<span className="text-xs text-foreground/45">{rows.length} 个</span>}
                 actions={null}
             />
@@ -74,8 +74,8 @@ export default function ProjectsPage() {
                 <CollectionGrid className="library-grid project-library-grid">
                     {canCreateProject ? <button type="button" className="library-create-card" onClick={() => setCreateOpen(true)}>
                         <span className="library-create-cover"><Plus className="size-8" /></span>
-                        <span className="library-create-title">创建短剧项目</span>
-                        <span className="library-create-meta">从故事、小说或空白开始</span>
+                        <span className="library-create-title">创建创作项目</span>
+                        <span className="library-create-meta">短剧生产或电商创意工作台</span>
                     </button> : null}
                     {rows.map((row) => <ProjectRow key={row.project.id} row={row} />)}
                 </CollectionGrid>
@@ -84,19 +84,20 @@ export default function ProjectsPage() {
                 <WorkspaceState
                     icon="projects"
                     title={keyword || status !== "all" ? "没有匹配的项目" : "创建第一个故事项目"}
-                    description={keyword || status !== "all" ? "调整搜索词或状态筛选后再试。" : "项目会集中保存章节、项目画布、角色场景和制作进度。自由试图可从画布开始。"}
+                    description={keyword || status !== "all" ? "调整搜索词或状态筛选后再试。" : "项目会按领域保存生产合同、资产、画布和制作进度。"}
                     action={!keyword && status === "all" ? <Button type="primary" icon={<Plus className="size-3.5" />} onClick={() => setCreateOpen(true)}>创建项目</Button> : undefined}
                 />
             ) : null}
 
-            <Modal className="library-modal" title="创建短剧项目" open={createOpen} footer={null} destroyOnHidden onCancel={() => setCreateOpen(false)} width={560} styles={{ body: { paddingTop: 12 } }}>
-                <Form<ProjectForm> layout="vertical" initialValues={{ aspectRatio: "9:16", sourceType: "blank" }} onFinish={(values) => mutation.mutate({ ...values, type: "short-drama" })}>
+            <Modal className="library-modal" title="创建创作项目" open={createOpen} footer={null} destroyOnHidden onCancel={() => setCreateOpen(false)} width={560} styles={{ body: { paddingTop: 12 } }}>
+                <Form<ProjectForm> layout="vertical" initialValues={{ type: "short-drama", aspectRatio: "9:16", sourceType: "blank" }} onFinish={(values) => mutation.mutate(values)}>
                     <Form.Item name="name" label="项目名称" rules={[{ required: true, whitespace: true, message: "请输入项目名称" }]}><Input autoFocus placeholder="例如：长安夜行" /></Form.Item>
+                    <Form.Item name="type" label="工作台类型" rules={[{ required: true }]}><Select options={[{ label: <span className="inline-flex items-center gap-2"><FolderKanban className="size-4" />短剧生产</span>, value: "short-drama" }, { label: <span className="inline-flex items-center gap-2"><ShoppingBag className="size-4" />电商创意</span>, value: "ecommerce" }]} /></Form.Item>
                     <div className="grid grid-cols-2 gap-3">
                         <Form.Item name="aspectRatio" label="默认画幅"><Select options={[{ label: "9:16 竖屏", value: "9:16" }, { label: "16:9 横屏", value: "16:9" }, { label: "1:1 方形", value: "1:1" }]} /></Form.Item>
                         <Form.Item name="sourceType" label="内容来源"><Select options={[{ label: "空白开始", value: "blank" }, { label: "导入小说", value: "novel" }, { label: "粘贴文本", value: "text" }]} /></Form.Item>
                     </div>
-                    <p className="-mt-1 mb-5 text-xs leading-5 text-foreground/48">创建后先进入项目概览。章节、画风和参考资产可以逐步补充。</p>
+                    <p className="-mt-1 mb-5 text-xs leading-5 text-foreground/48">创建后会进入对应工作台。电商创意当前先提供 Prototype A 开发面板，不调用真实 Provider。</p>
                     <div className="flex justify-end gap-2"><Button onClick={() => setCreateOpen(false)}>取消</Button><Button type="primary" htmlType="submit" loading={mutation.isPending}>创建项目</Button></div>
                 </Form>
             </Modal>
@@ -107,13 +108,14 @@ export default function ProjectsPage() {
 function ProjectRow({ row }: { row: ProjectSummary }) {
     const completion = projectSummaryCompletion(row);
     const stage = projectSummaryStage(row);
+    const isEcommerce = row.project.type === "ecommerce";
     const styleTitle = parseStyleProfile(row.project.styleProfileJson)?.title || resolveCanvasStylePreset(row.project.stylePresetId)?.title || (row.project.stylePresetId ? "自定义画风" : "未设置画风");
     return (
         <Link to={`/projects/${row.project.id}/overview`} className="library-card project-library-card group">
-            <span className="project-library-cover"><span className="project-library-cover-icon"><FolderKanban className="size-7" /></span><span className="project-library-cover-ratio">{row.project.aspectRatio}</span><span className="project-library-cover-stage">{stage.label}</span></span>
+            <span className="project-library-cover"><span className="project-library-cover-icon">{isEcommerce ? <ShoppingBag className="size-7" /> : <FolderKanban className="size-7" />}</span><span className="project-library-cover-ratio">{row.project.aspectRatio}</span><span className="project-library-cover-stage">{isEcommerce ? "电商创意" : stage.label}</span></span>
             <span className="project-library-body">
                 <span className="project-library-heading"><strong title={row.project.name}>{row.project.name}</strong>{row.project.status === "archived" ? <em>已归档</em> : null}<ArrowRight className="project-library-arrow size-4" /></span>
-                <span className="project-library-subtitle">{styleTitle} · {sourceTypeLabel(row.project.sourceType)}</span>
+                <span className="project-library-subtitle">{isEcommerce ? "Ecommerce Creative Studio" : styleTitle} · {sourceTypeLabel(row.project.sourceType)}</span>
                 <span className="project-library-progress"><span><span>{row.completedUnitCount}/{row.unitCount} 章</span><span>{completion}%</span></span><i><b style={{ width: `${completion}%` }} /></i></span>
                 <span className="project-library-stats"><ProjectCount icon={<BookOpenText className="size-3.5" />} label="章节" value={row.unitCount} /><ProjectCount icon={<LayoutGrid className="size-3.5" />} label="画布" value={row.canvasCount} /><ProjectCount icon={<Images className="size-3.5" />} label="资产" value={row.assetCount} /></span>
             </span>

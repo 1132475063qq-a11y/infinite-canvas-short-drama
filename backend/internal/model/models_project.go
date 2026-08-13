@@ -277,6 +277,25 @@ type CanvasProject struct {
 	UpdatedAt   time.Time `json:"updatedAt" gorm:"index:idx_canvas_projects_user_updated,priority:2"`
 }
 
+// CanvasProjectionPatch keeps server-owned runtime bindings separate from the
+// browser-synced CanvasProject document. A later full-document client sync
+// must therefore not remove or forge a Task binding created by the Provider
+// Gateway. The target Artifact version is the concurrency guard.
+type CanvasProjectionPatch struct {
+	ID                    string    `json:"id" gorm:"primaryKey;size:36"`
+	UserID                string    `json:"userId" gorm:"index;size:36;uniqueIndex:idx_canvas_projection_patch_target,priority:1"`
+	CanvasID              string    `json:"canvasId" gorm:"index;size:80;uniqueIndex:idx_canvas_projection_patch_target,priority:2"`
+	NodeID                string    `json:"nodeId" gorm:"size:120;uniqueIndex:idx_canvas_projection_patch_target,priority:3"`
+	PatchKind             string    `json:"patchKind" gorm:"size:64;uniqueIndex:idx_canvas_projection_patch_target,priority:4"`
+	TargetProjectID       string    `json:"targetProjectId" gorm:"index;size:36"`
+	TargetArtifactID      string    `json:"targetArtifactId" gorm:"index;size:36"`
+	TargetArtifactVersion int       `json:"targetArtifactVersion"`
+	TaskID                string    `json:"taskId" gorm:"index;size:36"`
+	Revision              int       `json:"revision"`
+	CreatedAt             time.Time `json:"createdAt"`
+	UpdatedAt             time.Time `json:"updatedAt"`
+}
+
 type CanvasShare struct {
 	ID          string     `json:"id" gorm:"primaryKey;size:36"`
 	UserID      string     `json:"userId" gorm:"index;size:36;uniqueIndex:idx_canvas_share_owner_project,priority:1"`

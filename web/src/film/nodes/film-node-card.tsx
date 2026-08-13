@@ -1,10 +1,10 @@
-import { AlertTriangle, Box, CircleDot, Drama, MapPin, Package, PersonStanding, Sparkles } from "lucide-react";
+import { AlertTriangle, Box, CircleDot, Clapperboard, Drama, MapPin, Package, PersonStanding, Sparkles } from "lucide-react";
 
 import { filmText, resolveFilmNode } from "@/film/domain/film-node-resolver";
 import type { ProjectDetail } from "@/services/api/projects";
 import type { CanvasNodeData } from "@/types/canvas";
 
-const labels: Record<string, string> = { scene: "SCENE", shot: "SHOT CONTRACT", character: "CHARACTER", location: "LOCATION", prop: "PROP", acting: "ACTING", prompt_pack: "PROMPT PACK", needs_you: "NEEDS YOU" };
+const labels: Record<string, string> = { scene: "SCENE", shot: "SHOT CONTRACT", character: "CHARACTER", location: "LOCATION", prop: "PROP", acting: "ACTING", prompt_pack: "PROMPT PACK", generation: "GENERATION REQUEST", needs_you: "NEEDS YOU" };
 
 export function FilmNodeCard({ node, project }: { node: CanvasNodeData; project?: ProjectDetail }) {
     const state = node.filmState;
@@ -13,10 +13,11 @@ export function FilmNodeCard({ node, project }: { node: CanvasNodeData; project?
     const isShot = node.filmKind === "shot";
     const isActing = node.filmKind === "acting";
     const isPromptPack = node.filmKind === "prompt_pack";
+    const isGeneration = node.filmKind === "generation";
     const title = isShot && shot ? filmText(contract.shotCode) || shot.title : asset?.title || node.title;
     const subtitle = isShot && shot
         ? `${formatSeconds(shot.durationMs)} · ${filmText(contract.shotSize) || "景别待定"}`
-        : isActing || isPromptPack
+        : isActing || isPromptPack || isGeneration
           ? `v${resolved.artifact?.objectVersion || 1} · ${resolved.artifact?.status || "draft"}`
           : asset
             ? `v${asset.currentVersion?.version || asset.character?.version || asset.versionCount || 1} · ${statusLabel(asset.status)}`
@@ -27,10 +28,12 @@ export function FilmNodeCard({ node, project }: { node: CanvasNodeData; project?
           ? [filmText(contract.objective), [filmText(contract.obstacle), filmText(contract.tactic)].filter(Boolean).join(" · ")]
           : isPromptPack
             ? [filmText(contract.compiledPrompt) || filmText(contract.sceneContext), [filmText(contract.formatMode), filmText(contract.camera)].filter(Boolean).join(" · ")]
+            : isGeneration
+              ? [filmText(contract.compiledPrompt), [filmText(contract.mediaType).toUpperCase(), filmText(contract.aspectRatio), formatDuration(contract.durationMs)].filter(Boolean).join(" · ")]
         : asset
           ? assetDetails(node.filmKind, resolved.definition)
           : [];
-    const Icon = node.filmKind === "character" ? PersonStanding : node.filmKind === "location" ? MapPin : node.filmKind === "prop" ? Package : node.filmKind === "shot" ? CircleDot : node.filmKind === "acting" ? Drama : node.filmKind === "prompt_pack" ? Sparkles : Box;
+    const Icon = node.filmKind === "character" ? PersonStanding : node.filmKind === "location" ? MapPin : node.filmKind === "prop" ? Package : node.filmKind === "shot" ? CircleDot : node.filmKind === "acting" ? Drama : node.filmKind === "prompt_pack" ? Sparkles : node.filmKind === "generation" ? Clapperboard : Box;
     const AttentionIcon = state?.attention === "error" || state?.attention === "warning" || state?.attention === "human_required" ? AlertTriangle : CircleDot;
 
     return (
@@ -60,6 +63,11 @@ function assetDetails(kind: string | undefined, definition: Record<string, unkno
 
 function formatSeconds(durationMs: number) {
     return `${Math.round(durationMs / 100) / 10} sec`;
+}
+
+function formatDuration(value: unknown) {
+    const durationMs = Number(value);
+    return Number.isFinite(durationMs) && durationMs > 0 ? formatSeconds(durationMs) : "";
 }
 
 function statusLabel(status: string) {

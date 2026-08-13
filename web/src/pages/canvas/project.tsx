@@ -28,6 +28,7 @@ import { ProductionShotStrip } from "@/film/panels/production-shot-strip";
 import { buildProductionShellModel, EMPTY_PRODUCTION_NAVIGATION_COUNTS, type ProductionNavigationKey } from "@/film/panels/production-shell-model";
 import { FilmNodeCard } from "@/film/nodes/film-node-card";
 import { describeFilmConnection } from "@/film/domain/edge-contract";
+import { resolveFilmNode } from "@/film/domain/film-node-resolver";
 import { isFilmProductionProjection } from "@/film/domain/node-projection";
 import { formatFilmSceneTitle, hasFilmSceneProjection } from "@/film/domain/scene-projection";
 import { CanvasProjectAssetModal } from "@/components/canvas/canvas-project-asset-modal";
@@ -779,7 +780,7 @@ function InfiniteCanvasPage() {
     });
 
     const addFilmNode = useCallback(
-        async (kind: "scene" | "shot" | "character" | "location" | "prop" | "acting" | "prompt_pack") => {
+        async (kind: "scene" | "shot" | "character" | "location" | "prop" | "acting" | "prompt_pack" | "generation") => {
             if (!linkedProjectId || !linkedProjectQuery.data) {
                 message.warning("请先将画布关联到短剧项目，再创建影视生产节点");
                 return;
@@ -789,11 +790,18 @@ function InfiniteCanvasPage() {
                 const detail = linkedProjectQuery.data;
                 const nextPosition = getCanvasCenter();
 
-                if (kind === "acting" || kind === "prompt_pack") {
-                    const shotId = selectedFilmNode?.domainRef?.shotId;
+                if (kind === "acting" || kind === "prompt_pack" || kind === "generation") {
+                    const promptNode = kind === "generation" && selectedFilmNode?.filmKind === "prompt_pack" ? selectedFilmNode : undefined;
+                    const shotId = promptNode?.domainRef?.shotId || selectedFilmNode?.domainRef?.shotId;
                     const shot = shotId ? detail.shots.find((item) => item.id === shotId) : undefined;
                     if (!shot) {
-                        message.info(`请先选择一个镜头，再创建${kind === "acting" ? "表演设计" : "提示词包"}`);
+                        message.info(kind === "generation" ? "请先选择一个 Prompt Pack，再创建 Generation Request" : `请先选择一个镜头，再创建${kind === "acting" ? "表演设计" : "提示词包"}`);
+                        return;
+                    }
+                    const promptArtifact = promptNode ? resolveFilmNode(promptNode, detail).artifact : undefined;
+                    const compiledPrompt = promptNode ? resolveFilmNode(promptNode, detail).contract.compiledPrompt : undefined;
+                    if (kind === "generation" && (!promptArtifact || typeof compiledPrompt !== "string" || !compiledPrompt.trim())) {
+                        message.info("请先在 Prompt Pack 中填写并保存最终编译提示词");
                         return;
                     }
                     const existingNode = nodesRef.current.find((item) => item.filmKind === kind && item.domainRef?.shotId === shot.id);
@@ -802,29 +810,33 @@ function InfiniteCanvasPage() {
                         message.info("当前镜头已经有对应生产节点");
                         return;
                     }
-                    const artifactType = kind === "acting" ? "acting" : "video_prompt_pack";
+                    const artifactType = kind === "acting" ? "acting" : kind === "prompt_pack" ? "video_prompt_pack" : "generation_request";
                     const latest = (detail.filmArtifacts || [])
                         .filter((item) => item.shotId === shot.id && item.artifactType === artifactType)
                         .sort((left, right) => right.objectVersion - left.objectVersion)[0];
                     const payload = kind === "acting"
                         ? { objective: "", obstacle: "", tactic: "", beat: "", performance: "", continuityLocks: "" }
-                        : { sceneContext: "", activeReferences: "", locationMap: "", firstFrame: "", blocking: "", bodyOrientation: "", gaze: "", anchors: "", formatMode: "single-shot", optics: "", camera: "", timedActionBeats: "", physics: "", lighting: "", audio: "", acting: "", style: "", positiveLocks: [], localFailureLocks: [], emittedNegativeConstraints: [], compiledPrompt: "" };
+                        : kind === "prompt_pack"
+                          ? { sceneContext: "", activeReferences: "", locationMap: "", firstFrame: "", blocking: "", bodyOrientation: "", gaze: "", anchors: "", formatMode: "single-shot", optics: "", camera: "", timedActionBeats: "", physics: "", lighting: "", audio: "", acting: "", style: "", positiveLocks: [], localFailureLocks: [], emittedNegativeConstraints: [], compiledPrompt: "" }
+                          : { promptArtifactId: promptArtifact!.id, mediaType: "video", aspectRatio: detail.project.aspectRatio || "9:16", durationMs: shot.durationMs || 5000, outputIntent: "首轮镜头生成" };
                     const artifact = latest || (await saveProjectFilmArtifact(linkedProjectId, { shotId: shot.id, artifactType, status: "draft", payload })).artifact;
                     const shotNode = nodesRef.current.find((item) => item.filmKind === "shot" && item.domainRef?.shotId === shot.id);
                     const node = createFilmCanvasNode(
                         CanvasNodeType.Text,
                         kind,
-                        shotNode ? { x: shotNode.position.x + shotNode.width + (kind === "acting" ? 48 : 408), y: shotNode.position.y + shotNode.height / 2 } : nextPosition,
+                        shotNode ? { x: shotNode.position.x + shotNode.width + (kind === "acting" ? 48 : kind === "prompt_pack" ? 408 : 796), y: shotNode.position.y + shotNode.height / 2 } : nextPosition,
                         { projectId: linkedProjectId, unitId: shot.unitId, sceneId: shot.sceneId, shotId: shot.id, artifactId: artifact.id, artifactVersion: String(artifact.objectVersion) },
-                        { workflowKind: kind, workflowTitle: kind === "acting" ? "Acting" : "Prompt Pack" },
+                        { workflowKind: kind, workflowTitle: kind === "acting" ? "Acting" : kind === "prompt_pack" ? "Prompt Pack" : "Generation Request" },
                     );
-                    node.title = `${shot.title} · ${kind === "acting" ? "Acting" : "Prompt Pack"}`;
-                    node.width = kind === "acting" ? 300 : 340;
+                    node.title = `${shot.title} · ${kind === "acting" ? "Acting" : kind === "prompt_pack" ? "Prompt Pack" : "Generation Request"}`;
+                    node.width = kind === "acting" ? 300 : kind === "prompt_pack" ? 340 : 320;
                     node.height = 180;
-                    node.layout = { mode: "auto", lane: "shot_pipeline", order: kind === "acting" ? 1 : 2 };
+                    node.layout = { mode: "auto", lane: "shot_pipeline", order: kind === "acting" ? 1 : kind === "prompt_pack" ? 2 : 3 };
                     const sources = kind === "acting"
                         ? [shotNode]
-                        : [shotNode, nodesRef.current.find((item) => item.filmKind === "acting" && item.domainRef?.shotId === shot.id)];
+                        : kind === "prompt_pack"
+                          ? [shotNode, nodesRef.current.find((item) => item.filmKind === "acting" && item.domainRef?.shotId === shot.id)]
+                          : [promptNode];
                     setNodes((current) => applyFilmAutoLayout([...current, node], gridSize));
                     setConnections((current) => {
                         const additions = sources.filter(Boolean).flatMap((source) => {
@@ -2002,6 +2014,7 @@ function InfiniteCanvasPage() {
                                     onAddFilmProp={() => void addFilmNode("prop")}
                                     onAddFilmActing={() => void addFilmNode("acting")}
                                     onAddFilmPromptPack={() => void addFilmNode("prompt_pack")}
+                                    onAddFilmGeneration={() => void addFilmNode("generation")}
                                 />
                             ) : null}
                         </div>

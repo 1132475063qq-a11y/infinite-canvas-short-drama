@@ -62,12 +62,12 @@ export type ProjectAsset = {
 };
 
 export type ProjectAssetVersionSummary = {
-	id: string;
-	version: number;
-	status: string;
-	definition: Record<string, unknown>;
-	note: string;
-	updatedAt: string;
+    id: string;
+    version: number;
+    status: string;
+    definition: Record<string, unknown>;
+    note: string;
+    updatedAt: string;
 };
 
 export type CharacterRepresentation = {
@@ -151,20 +151,103 @@ export type ProjectScene = {
 };
 
 export type FilmArtifact = {
-	id: string;
-	projectId: string;
-	unitId?: string;
-	sceneId?: string;
-	shotId?: string;
-	artifactType: string;
-	objectVersion: number;
-	status: string;
-	responsibleAgentId?: string;
-	payloadJson: string;
-	sourceRefsJson: string;
-	authorityRefsJson: string;
-	createdAt: string;
-	updatedAt: string;
+    id: string;
+    projectId: string;
+    unitId?: string;
+    sceneId?: string;
+    shotId?: string;
+    artifactType: string;
+    objectVersion: number;
+    status: string;
+    responsibleAgentId?: string;
+    payloadJson: string;
+    sourceRefsJson: string;
+    authorityRefsJson: string;
+    createdAt: string;
+    updatedAt: string;
+};
+
+// This is a read-only Provider Gateway contract, not a queued Task. It never
+// contains a channel configuration, a model credential, or a provider job ID.
+export type FilmGenerationTaskDraft = {
+    schemaVersion: number;
+    generationRequestArtifactId: string;
+    generationRequestArtifactVersion: number;
+    generationRequestStatus: string;
+    projectId: string;
+    unitId?: string;
+    sceneId?: string;
+    shotId: string;
+    taskType: "canvas_image" | "canvas_video" | "canvas_audio" | string;
+    operation: string;
+    requestReady: boolean;
+    providerRouteResolved: boolean;
+    submissionAllowed: boolean;
+    submissionState: string;
+    blockers: string[];
+    requestFingerprint: string;
+    gatewayInput: {
+        schemaVersion: number;
+        mode: "image" | "video" | "audio" | string;
+        prompt: string;
+        aspectRatio?: string;
+        durationMs?: number;
+        outputIntent: string;
+        generationRequestArtifactId: string;
+        generationRequestArtifactVersion: number;
+        promptArtifactId: string;
+        promptArtifactVersion: number;
+        sourceRefs: string[];
+    };
+};
+
+// Provider route discovery is deliberately read-only. It exposes only
+// backend-managed system-channel readiness, never a base URL or credential.
+export type FilmGenerationProviderRoute = {
+    channelId: string;
+    channelName: string;
+    model: string;
+    modelDisplayName: string;
+    capability: "image" | "video" | "audio" | string;
+    protocol: string;
+    billingMode: string;
+    unitPriceMicrocredits?: number;
+    priceConfigured: boolean;
+    capabilityVersion?: number;
+    providerReady: boolean;
+    billingReady: boolean;
+    routeReady: boolean;
+    blockers: string[];
+};
+
+export type FilmGenerationProviderRouteCatalog = {
+    schemaVersion: number;
+    generationRequestArtifactId: string;
+    generationRequestArtifactVersion: number;
+    mode: "image" | "video" | "audio" | string;
+    requestReady: boolean;
+    state: string;
+    blockers: string[];
+    requestFingerprint: string;
+    routes: FilmGenerationProviderRoute[];
+};
+
+export type EcommerceArtifact = {
+    id: string;
+    projectId: string;
+    artifactKey: string;
+    artifactType: string;
+    schemaVersion: number;
+    revision: number;
+    lifecycle: "draft" | "review" | "finalized" | "superseded" | "archived" | string;
+    evidence: "recorded" | "inferred" | "unknown" | string;
+    responsibleAgentId?: string;
+    skillRef?: string;
+    payloadJson: string;
+    sourceRefsJson: string;
+    authorityRefsJson: string;
+    createdAt: string;
+    updatedAt: string;
 };
 
 export type ShotAssetReference = {
@@ -210,6 +293,7 @@ export type ProjectDetail = {
     scenes: ProjectScene[];
     shots: ProjectShot[];
     filmArtifacts?: FilmArtifact[];
+    ecommerceArtifacts?: EcommerceArtifact[];
     shotReferences: ShotAssetReference[];
     assetCandidates: ProjectAssetCandidate[];
 };
@@ -284,7 +368,7 @@ export function updateProjectAssetCategory(projectId: string, assetId: string, c
 }
 
 export function createProjectAssetVersion(projectId: string, assetId: string, input: { title?: string; prompt?: string; definitionJson?: string; note?: string }) {
-	return request<{ version: { id: string; assetId: string; version: number; status: string; definitionJson: string; note: string } }>(api.post(`/projects/${encodeURIComponent(projectId)}/assets/${encodeURIComponent(assetId)}/versions`, input));
+    return request<{ version: { id: string; assetId: string; version: number; status: string; definitionJson: string; note: string } }>(api.post(`/projects/${encodeURIComponent(projectId)}/assets/${encodeURIComponent(assetId)}/versions`, input));
 }
 
 export function listVoiceProfiles() {
@@ -323,8 +407,38 @@ export function saveProjectShot(projectId: string, input: { id?: string; unitId?
     return request<{ shot: ProjectShot }>(api.post(`/projects/${encodeURIComponent(projectId)}/shots`, input));
 }
 
-export function saveProjectFilmArtifact(projectId: string, input: { shotId: string; artifactType: "acting" | "video_prompt_pack"; status?: string; responsibleAgentId?: string; payload: Record<string, unknown> }) {
+export function saveProjectFilmArtifact(projectId: string, input: { shotId: string; artifactType: "acting" | "video_prompt_pack" | "generation_request"; status?: string; responsibleAgentId?: string; payload: Record<string, unknown> }) {
     return request<{ artifact: FilmArtifact }>(api.post(`/projects/${encodeURIComponent(projectId)}/film-artifacts`, input));
+}
+
+export function getProjectFilmGenerationTaskDraft(projectId: string, artifactId: string) {
+    return request<{ taskDraft: FilmGenerationTaskDraft }>(api.get(`/projects/${encodeURIComponent(projectId)}/film-generation-requests/${encodeURIComponent(artifactId)}/task-draft`));
+}
+
+export function getProjectFilmGenerationProviderRoutes(projectId: string, artifactId: string) {
+    return request<{ providerRoutes: FilmGenerationProviderRouteCatalog }>(api.get(`/projects/${encodeURIComponent(projectId)}/film-generation-requests/${encodeURIComponent(artifactId)}/provider-routes`));
+}
+
+export function listProjectEcommerceArtifacts(projectId: string) {
+    return request<{ artifacts: EcommerceArtifact[] }>(api.get(`/projects/${encodeURIComponent(projectId)}/ecommerce-artifacts`));
+}
+
+export function saveProjectEcommerceArtifact(
+    projectId: string,
+    input: {
+        artifactKey: string;
+        artifactType: string;
+        schemaVersion: number;
+        lifecycle?: EcommerceArtifact["lifecycle"];
+        evidence?: EcommerceArtifact["evidence"];
+        responsibleAgentId?: string;
+        skillRef?: string;
+        payload: Record<string, unknown>;
+        sourceRefs: string[];
+        authorityRefs?: string[];
+    },
+) {
+    return request<{ artifact: EcommerceArtifact }>(api.post(`/projects/${encodeURIComponent(projectId)}/ecommerce-artifacts`, input));
 }
 
 export function saveProjectScene(projectId: string, input: { id?: string; unitId?: string; code?: string; title: string; description?: string; interiorExterior?: string; timeOfDay?: string; locationAssetId?: string; position?: number; status?: string }) {

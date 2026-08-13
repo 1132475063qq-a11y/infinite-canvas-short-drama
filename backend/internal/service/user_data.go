@@ -153,7 +153,11 @@ func (s *Service) UserCanvasProjects(userID string) ([]json.RawMessage, error) {
 	result := make([]json.RawMessage, 0, len(projects))
 	for _, project := range projects {
 		if strings.TrimSpace(project.PayloadJSON) != "" {
-			result = append(result, json.RawMessage(project.PayloadJSON))
+			payload, payloadErr := s.canvasProjectPayloadWithRuntimeProjection(&project)
+			if payloadErr != nil {
+				return nil, payloadErr
+			}
+			result = append(result, payload)
 		}
 	}
 	return result, nil
@@ -176,7 +180,7 @@ func (s *Service) UserCanvasProject(userID string, id string) (json.RawMessage, 
 	if err != nil {
 		return nil, err
 	}
-	return json.RawMessage(project.PayloadJSON), nil
+	return s.canvasProjectPayloadWithRuntimeProjection(project)
 }
 
 func (s *Service) UpsertUserCanvasProject(userID string, raw json.RawMessage) (UserDataSummary, error) {
@@ -202,7 +206,7 @@ func (s *Service) UpsertUserCanvasProject(userID string, raw json.RawMessage) (U
 	if err != nil {
 		return UserDataSummary{}, err
 	}
-	if err := validateStructuredStorageQuotaWithPolicy(usage, "canvas", errors.Is(existingErr, gorm.ErrRecordNotFound), int64(len(raw))-existingBytes, policy.Resource); err != nil {
+	if err := validateStructuredStorageQuotaWithPolicy(usage, "canvas", errors.Is(existingErr, gorm.ErrRecordNotFound), int64(len(project.PayloadJSON))-existingBytes, policy.Resource); err != nil {
 		return UserDataSummary{}, err
 	}
 	if err := s.repo.UpsertCanvasProject(&project); err != nil {
@@ -230,7 +234,7 @@ func (s *Service) ReplaceUserCanvasProjects(userID string, req CanvasProjectsSyn
 			return nil, err
 		}
 		projects = append(projects, item)
-		totalBytes += int64(len(raw))
+		totalBytes += int64(len(item.PayloadJSON))
 	}
 	policy, err := s.RuntimePolicy()
 	if err != nil {
@@ -304,6 +308,13 @@ func canvasProjectFromJSON(userID string, raw json.RawMessage) (model.CanvasProj
 	if err := validateSyncedPayload(raw, "画布"); err != nil {
 		return model.CanvasProject{}, err
 	}
+	// Runtime Task bindings are server-owned overlays. Persisting a browser's
+	// full document snapshot must never make its DomainRef.taskId authoritative.
+	var err error
+	raw, err = stripClientFilmGenerationTaskClaims(raw)
+	if err != nil {
+		return model.CanvasProject{}, err
+	}
 	var payload struct {
 		ID        string `json:"id"`
 		Title     string `json:"title"`
@@ -330,6 +341,14 @@ func canvasProjectFromJSON(userID string, raw json.RawMessage) (model.CanvasProj
 		CreatedAt:   createdAt,
 		UpdatedAt:   updatedAt,
 	}, nil
+}
+
+func (s *Service) canvasProjectPayloadWithRuntimeProjection(project *model.CanvasProject) (json.RawMessage, error) {
+	patches, err := s.repo.CanvasProjectionPatchesForCanvas(project.UserID, project.ID)
+	if err != nil {
+		return nil, err
+	}
+	return applyCanvasProjectionPatches(json.RawMessage(project.PayloadJSON), patches, project.ProjectID, project.UpdatedAt)
 }
 
 func validateSyncedPayload(raw json.RawMessage, label string) error {
