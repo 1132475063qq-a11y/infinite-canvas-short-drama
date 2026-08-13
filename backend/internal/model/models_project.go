@@ -294,6 +294,11 @@ type CanvasProjectionPatch struct {
 	Revision              int       `json:"revision"`
 	CreatedAt             time.Time `json:"createdAt"`
 	UpdatedAt             time.Time `json:"updatedAt"`
+	// Runtime facts are read-only overlays populated from the execution tables;
+	// they are never persisted as part of the patch or browser Canvas document.
+	GenerationAttemptID string `json:"generationAttemptId,omitempty" gorm:"-"`
+	ProviderJobID       string `json:"providerJobId,omitempty" gorm:"-"`
+	ResultID            string `json:"resultId,omitempty" gorm:"-"`
 }
 
 type CanvasShare struct {

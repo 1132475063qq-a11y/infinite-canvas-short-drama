@@ -59,6 +59,8 @@ func Models() []any {
 		&model.Announcement{},
 		&model.UserAnnouncementRead{},
 		&model.Task{},
+		&model.GenerationAttempt{},
+		&model.ProviderJob{},
 		&model.TaskTextDelta{},
 		&model.Session{},
 		&model.Message{},

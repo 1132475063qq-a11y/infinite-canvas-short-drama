@@ -988,10 +988,22 @@ func providerRequestIDFromPath(path string) string {
 func firstInt64(values map[string]any, keys ...string) int64 {
 	for _, key := range keys {
 		switch value := values[key].(type) {
+		case int:
+			return int64(value)
+		case int32:
+			return int64(value)
 		case float64:
 			return int64(value)
 		case int64:
 			return value
+		case uint:
+			return int64(value)
+		case uint32:
+			return int64(value)
+		case uint64:
+			if value <= uint64(^uint64(0)>>1) {
+				return int64(value)
+			}
 		case json.Number:
 			parsed, _ := value.Int64()
 			return parsed

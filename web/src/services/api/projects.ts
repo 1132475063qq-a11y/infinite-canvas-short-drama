@@ -232,6 +232,63 @@ export type FilmGenerationProviderRouteCatalog = {
     routes: FilmGenerationProviderRoute[];
 };
 
+export type FilmProviderJobExecution = {
+    id: string;
+    providerRequestId: string;
+    status: "accepted" | "running" | "succeeded" | "failed" | "cancellation_requested" | "cancelled" | "uncertain" | string;
+    providerStatus?: string;
+    pollStage?: string;
+    lastError?: string;
+    firstObservedAt: string;
+    lastObservedAt: string;
+    completedAt?: string;
+};
+
+export type FilmGenerationResult = {
+    id: string;
+    kind: "film_generation_result" | string;
+    url?: string;
+    payload: string;
+    createdAt: string;
+};
+
+export type FilmGenerationAttemptExecution = {
+    id: string;
+    taskId: string;
+    attemptNumber: number;
+    generationRequestArtifactVersion: number;
+    canvasId: string;
+    canvasNodeId: string;
+    unitId?: string;
+    sceneId?: string;
+    shotId?: string;
+    requestFingerprint: string;
+    billingOrderId?: string;
+    channelId: string;
+    channelModelId: string;
+    model: string;
+    capability: string;
+    protocol: string;
+    capabilityVersion: number;
+    priceVersion: number;
+    status: "queued" | "running" | "succeeded" | "failed" | "cancelled" | "uncertain" | string;
+    error?: string;
+    startedAt?: string;
+    completedAt?: string;
+    createdAt: string;
+    updatedAt: string;
+    providerJobs: FilmProviderJobExecution[];
+    results: FilmGenerationResult[];
+};
+
+export type FilmGenerationExecutionHistory = {
+    schemaVersion: number;
+    projectId: string;
+    generationRequestArtifactId: string;
+    generationRequestArtifactVersion: number;
+    attempts: FilmGenerationAttemptExecution[];
+};
+
 export type EcommerceArtifact = {
     id: string;
     projectId: string;
@@ -417,6 +474,10 @@ export function getProjectFilmGenerationTaskDraft(projectId: string, artifactId:
 
 export function getProjectFilmGenerationProviderRoutes(projectId: string, artifactId: string) {
     return request<{ providerRoutes: FilmGenerationProviderRouteCatalog }>(api.get(`/projects/${encodeURIComponent(projectId)}/film-generation-requests/${encodeURIComponent(artifactId)}/provider-routes`));
+}
+
+export function getProjectFilmGenerationExecutions(projectId: string, artifactId: string) {
+    return request<{ executionHistory: FilmGenerationExecutionHistory }>(api.get(`/projects/${encodeURIComponent(projectId)}/film-generation-requests/${encodeURIComponent(artifactId)}/executions`));
 }
 
 export function listProjectEcommerceArtifacts(projectId: string) {

@@ -140,7 +140,7 @@ web/src/pages/canvas/canvas-project-top-bar.tsx
 web/test/production-ui-shell.test.ts
 ```
 
-### Phase 4：影视生产节点（Generation Request 批完成，阶段仍进行中）
+### Phase 4/5：影视生产节点完成，Provider Gateway 单渠道事实链已落代码、待运行验证
 
 已完成本批：
 
@@ -162,10 +162,17 @@ web/test/production-ui-shell.test.ts
 - 新增只读 `Generation Request → Task Draft` 合同：后端总是按画布指定的 Artifact ID 读取精确请求版本，编译出 provider-independent `gatewayInput`、来源、指纹和阻塞原因；它不会创建 Task、计费单、ProviderJob、Result 或 `DomainRef.taskId`。
 - Inspector 的 Execution 标签可查看只读任务合同和只读后端渠道候选；Generation Request 可显式保存为 draft / review / ready / locked。只有 ready / locked 可进入未来网关路由等待态，当前仍没有提交按钮。
 - 新增服务端 `CanvasProjectionPatch`：Task 绑定独立于浏览器整份 `CanvasProject.PayloadJSON`，只在 Canvas 节点仍精确指向同一 Generation Request Artifact 版本时叠加 `taskId`；浏览器保存会剥离伪造/旧的 `taskId`，整份画布替换也不会擦除仍存在 Canvas 的服务器 Patch。
-- `Task` 仍是未来异步执行事实；当前 `generation` 节点不提交 Provider、不生成 Result，也不会记录任何前端密钥。
-- 本次新增的 Generation Request、Provider Route Catalog、Canvas Projection Patch 合同测试和画布语义测试已写入工作区；按当前 `AGENTS.md` 的默认验证纪律，本轮未运行测试、typecheck、build 或浏览器实测，不能用此前 Acting / Prompt Pack 的验收结果代替本批验收。
+- 新增单渠道原子提交 API：只接受 Canvas/节点、请求指纹、后端渠道 ID 和模型 key；在同一事务内锁定并复核 Project、Canvas、Generation Request、渠道、能力版本与价格快照，随后原子完成积分预留、标准 `canvas_image` / `canvas_video` Task 和 Projection Patch。
+- 同一节点 + 同一 Generation Request 版本重复提交会返回原 Task，不重复预扣；积分不足、目标变化、路由变化或节点已有活动任务时，Task、账单、积分流水和 Patch 全部回滚。Worker 只能在事务提交后看到 Task。
+- Task 输入只保存非敏感渠道 ID、模型 key、标准化运行参数和审计快照；API Key、Base URL、Secret 和 Headers 仍只存在后端渠道层。Worker 执行时再次解析密钥，并拒绝协议/能力版本已漂移的任务。
+- 原子提交现在同时创建初始 `GenerationAttempt`；Worker 领取、租约恢复、失败、取消和 Retry 都保留独立 Attempt 历史，不再只依赖可变的 `Task.attempts`。终态和完成写入校验租约所有者，失效 Worker 不能关闭后继 Attempt。
+- 真实上游任务号现在按 Worker 携带的 Attempt 编号保存为 `ProviderJob`；迟到观察仍归原 Attempt，不能覆盖新 Attempt 的 Task 指针；已确认成功不会被后续噪声轮询降级，已知上游 ID 但没有终态证据的失败会记录为 `uncertain`。
+- 影视 Task 成功、Attempt 成功和 `Result(kind = film_generation_result)` 在同一事务落库；Result 关联精确 Generation Request ID/版本、Task、Attempt 与首个可访问媒体 URL。
+- 新增只读执行历史 API，并在 Canvas 读取时从后端事实表临时投影 `generationAttemptId`、`providerJobId`、`resultId`；浏览器保存会和 `taskId` 一样剥离这些运行时 ID。
+- 当前仍没有前端提交按钮，也没有在本轮调用提交 API 或真实 Provider；尚未产生媒体 Result。
+- 本次新增的 Generation Request、Provider Route Catalog、原子提交、计费回滚、GenerationAttempt、ProviderJob、Film Result、Canvas Projection Patch 合同测试和画布语义测试已写入当前分支；按当前 `AGENTS.md` 的默认验证纪律，本轮未运行测试、typecheck、build 或浏览器实测，不能把代码和测试文件当成运行验收。
 
-尚未完成：Provider Gateway 原子 Task 创建、GenerationAttempt、ProviderJob、Result、QC、Retry，以及《寄生广告》数据库 Golden Project。
+尚未完成：前端费用确认与提交/历史交互、真实单 Provider 接受测试、真实媒体结果、QC/Retry UI，以及《寄生广告》数据库 Golden Project。
 
 ### Ecommerce Creative Studio：Prototype A Provider-free 合同阶段
 
@@ -304,16 +311,15 @@ LOCAL_UID=$(id -u) LOCAL_GID=$(id -g) docker compose -f docker-compose.dev.yml u
 当前尚没有正式独立模型：
 
 - 通用 Agent Artifact / ArtifactVersion（影视节点当前使用的是已落库的 `FilmArtifact` 不可变版本行）
-- GenerationAttempt / ProviderJob
 - QCReport
 - ChangeRequest
 - AgentProfile / Topic
 
 这些属于后续阶段，不得提前宣称完成。
 
-## 6. 下一步：Film Phase 4 与 Ecommerce Prototype A 并行但隔离
+## 6. 下一步：Film Phase 5 与 Ecommerce Prototype A 并行但隔离
 
-不要直接接入真实 Provider Gateway。最新版详细规划明确规定：
+不要越过当前单渠道原子边界直接接入多家 Provider 或完整生成系统。最新版详细规划明确规定：
 
 ```text
 Film：
@@ -334,7 +340,7 @@ Ecommerce：
 
 Phase 3 已通过自动与浏览器验收，下一会话不要重做 UI Shell。Phase 0 仍需另补数据库 schema 快照和恢复说明。
 
-### Phase 4：Film Nodes 当前边界
+### Phase 4 已完成 / Phase 5 当前边界
 
 已完成：
 
@@ -342,12 +348,16 @@ Phase 3 已通过自动与浏览器验收，下一会话不要重做 UI Shell。
 - 已建立只读 `GenerationRequest → Task Draft` 合同，冻结精确 Artifact 版本、Gateway 输入、任务类型、状态/阻塞原因与指纹；Canvas 仍只做 Projection。
 - 已建立只读 Provider Route Catalog：仅从后端 system channel 中列出与冻结请求媒体类型匹配的模型，并返回脱敏的能力、计费和就绪状态；它不创建 Task、不预扣积分、不调用 Provider，也不回写 Canvas。
 - 已建立 revision-safe `CanvasProjectionPatch`：服务端 Task 绑定与完整浏览器 Canvas 文档分离，读取时仅按精确 Generation Request 版本叠加，浏览器无法伪造或擦除绑定。
+- 已建立图片/视频单渠道原子提交：精确请求、服务端路由、能力/价格、Task、积分预留和 Patch 在事务边界内复核并提交；重复请求幂等，失败全回滚。
+- 已建立 Attempt/ProviderJob/Film Result 事实链：提交创建 queued Attempt，Worker 领取、租约恢复和 Retry 保留编号历史，上游任务号归属具体 Attempt，成功 Task 与 Result 同事务落库。
+- 已建立只读执行历史 API 和 Canvas 运行时投影；浏览器文档不拥有 Task、Attempt、ProviderJob 或 Result ID。
 - API Key 继续只存在后端 Secret/渠道配置层，任何 Generation 节点都不得保存密钥。
 
-下一批才可讨论：
+下一批只可讨论：
 
-- 由 Provider Gateway 在同一后端事务内重新解析已选系统渠道、校验能力/计费、创建标准 `canvas_*` Task，并创建/更新对应的 Projection Patch；当前的独立绑定方法不能替代该原子提交。
-- 不要同时接入多家 Provider、真实模型调用或 Agent Runtime。
+- 先为 Inspector 增加明确的费用确认、提交和执行历史交互；读取 Inspector 不得自动提交。
+- 再使用非生产测试输入完成一个受控单 Provider 接受测试，明确区分 API 状态、Result 持久化和真实媒体质量。
+- 不要同时接入多家 Provider、QC/Retry 全链或 Agent Runtime。
 
 优先复用并增量升级：
 
@@ -393,6 +403,6 @@ docs/production-canvas/ecommerce-prototype-addendum.md 和
 /Users/xiangyuqin/Downloads/短剧AI无限画布_Production_Canvas_v2_超详细发展规划.md。
 检查当前分支、Git 状态和最近提交，不要重做 Phase 1/Phase 2。
 Film Phase 3 已完成并通过 78/78 自动测试与三档浏览器验收，不要重做。
-Phase 4 已完成 Scene、Shot、Character、Location、Prop、Acting、Prompt Pack、Generation Request、只读 Task Draft、只读 Provider Route Catalog 和 revision-safe Canvas Projection Patch 的事实源投影。
-Film 下一步只设计 Provider Gateway 的原子 Task 创建，不直接接入多家 Provider；Ecommerce 已完成 Prototype A 无 Provider 合同骨架和 Provider Evaluation 记录合同，下一步只在用户提供真实渠道/素材后执行 Bake-off。两条线都先冻结数据合同、状态机和安全边界，不要提前接入 Full Ecommerce V1 或复杂 Agent Runtime。
+Phase 4 已完成 Scene、Shot、Character、Location、Prop、Acting、Prompt Pack、Generation Request、只读 Task Draft、只读 Provider Route Catalog、revision-safe Canvas Projection Patch，以及图片/视频单渠道原子 Task 提交边界。
+Phase 5 的 GenerationAttempt / ProviderJob / Film Result 数据合同、事务写入、Retry 历史、只读执行 API 和 Canvas 运行时投影已写入当前分支，但当前变化尚未运行测试、构建或浏览器验收。Film 下一步先做针对性验证，再实现费用确认后的显式提交与执行历史 UI，然后做一个受控单 Provider 接受测试；不直接接入多家 Provider。Ecommerce 已完成 Prototype A 无 Provider 合同骨架和 Provider Evaluation 记录合同，下一步只在用户提供真实渠道/素材后执行 Bake-off。两条线都不要提前接入 Full Ecommerce V1 或复杂 Agent Runtime。
 ```

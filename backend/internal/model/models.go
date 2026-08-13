@@ -5,6 +5,8 @@ import (
 )
 
 type TaskStatus string
+type GenerationAttemptStatus string
+type ProviderJobStatus string
 type ProviderCancelStatus string
 type SessionStatus string
 type UserRole string
@@ -27,8 +29,10 @@ type WorkflowStatus string
 type WorkflowStepStatus string
 
 const (
-	ProjectTypeShortDrama = "short-drama"
-	ProjectTypeEcommerce  = "ecommerce"
+	ProjectTypeShortDrama    = "short-drama"
+	ProjectTypeEcommerce     = "ecommerce"
+	TaskProviderFilmGateway  = "provider-gateway"
+	ResultKindFilmGeneration = "film_generation_result"
 )
 
 // AdminAuditEvent 只允许追加，用于还原管理员写操作，禁止作为可编辑业务状态使用。
@@ -49,6 +53,21 @@ const (
 	TaskStatusSucceeded TaskStatus = "succeeded"
 	TaskStatusFailed    TaskStatus = "failed"
 	TaskStatusCancelled TaskStatus = "cancelled"
+
+	GenerationAttemptStatusQueued    GenerationAttemptStatus = "queued"
+	GenerationAttemptStatusRunning   GenerationAttemptStatus = "running"
+	GenerationAttemptStatusSucceeded GenerationAttemptStatus = "succeeded"
+	GenerationAttemptStatusFailed    GenerationAttemptStatus = "failed"
+	GenerationAttemptStatusCancelled GenerationAttemptStatus = "cancelled"
+	GenerationAttemptStatusUncertain GenerationAttemptStatus = "uncertain"
+
+	ProviderJobStatusAccepted              ProviderJobStatus = "accepted"
+	ProviderJobStatusRunning               ProviderJobStatus = "running"
+	ProviderJobStatusSucceeded             ProviderJobStatus = "succeeded"
+	ProviderJobStatusFailed                ProviderJobStatus = "failed"
+	ProviderJobStatusCancellationRequested ProviderJobStatus = "cancellation_requested"
+	ProviderJobStatusCancelled             ProviderJobStatus = "cancelled"
+	ProviderJobStatusUncertain             ProviderJobStatus = "uncertain"
 
 	SessionStatusActive    SessionStatus = "active"
 	SessionStatusCompleted SessionStatus = "completed"

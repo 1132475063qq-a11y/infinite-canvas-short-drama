@@ -105,6 +105,7 @@ type providerAnalyticsContext struct {
 	Service           *Service
 	UserID            string
 	TaskID            string
+	AttemptNumber     int
 	BillingOrderID    string
 	Capability        string
 	Operation         string
@@ -117,7 +118,7 @@ type providerAnalyticsContext struct {
 }
 
 func withProviderAnalytics(ctx context.Context, service *Service, task model.Task) context.Context {
-	metadata := providerAnalyticsContext{Service: service, UserID: task.UserID, TaskID: task.ID, BillingOrderID: task.BillingOrderID, Capability: capabilityFromTaskType(task.Type), Operation: task.Operation, Model: task.Model, ProviderRequestID: task.ProviderRequestID}
+	metadata := providerAnalyticsContext{Service: service, UserID: task.UserID, TaskID: task.ID, AttemptNumber: task.Attempts, BillingOrderID: task.BillingOrderID, Capability: capabilityFromTaskType(task.Type), Operation: task.Operation, Model: task.Model, ProviderRequestID: task.ProviderRequestID}
 	var input struct {
 		Mode   string         `json:"mode"`
 		Config providerConfig `json:"config"`
@@ -177,6 +178,9 @@ func (s *Service) processCanvasGenerationTask(ctx context.Context, userID string
 	}
 	if strings.TrimSpace(input.Prompt) == "" {
 		return nil, errors.New("prompt is required")
+	}
+	if err := s.validateTaskProviderRouteSnapshot(input.Config, input.Metadata); err != nil {
+		return nil, err
 	}
 	config, err := s.resolveProviderConfig(input.Config)
 	if err != nil {
@@ -2610,7 +2614,7 @@ func recordProviderRequest(req *http.Request, startedAt time.Time, statusCode in
 		apiFormat = "gemini"
 	}
 	log := model.ApiCallLog{
-		UserID: metadata.UserID, ChannelID: metadata.ChannelID, TaskID: metadata.TaskID, BillingOrderID: metadata.BillingOrderID,
+		UserID: metadata.UserID, ChannelID: metadata.ChannelID, TaskID: metadata.TaskID, AttemptNumber: metadata.AttemptNumber, BillingOrderID: metadata.BillingOrderID,
 		Source: "backend-task", Capability: metadata.Capability, Operation: metadata.Operation,
 		RequestKind: requestKind, Billable: req.Method == http.MethodPost && requestKind != "cancel",
 		APIFormat: apiFormat, Method: req.Method, Path: req.URL.Path, Model: metadata.Model,

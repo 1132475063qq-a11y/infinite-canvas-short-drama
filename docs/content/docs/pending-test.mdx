@@ -1,0 +1,30 @@
+---
+title: Pending Test
+---
+
+# 待验证功能
+
+本页只记录代码和测试合同已经写入当前分支、但尚未按本次改动实际运行验收的变化。通过后再移动到正式功能说明。
+
+## Film Provider Gateway 执行事实链
+
+当前工作区已加入：
+
+- 原子提交同时创建 queued `Task`、queued `GenerationAttempt`、可选计费预留和 `CanvasProjectionPatch`；
+- Worker 领取、租约恢复、失败、取消与 Retry 的 Attempt 编号和状态事务；
+- 失效 Worker 的进度、终态和完成写入隔离，以及迟到 Provider 观察仍归原 Attempt；
+- Attempt 作用域的 `ProviderJob`，以及 API 调用状态和取消状态归一化；
+- Task 成功、Attempt 成功与 `Result(kind = film_generation_result)` 同事务写入；
+- `GET /projects/:projectId/film-generation-requests/:artifactId/executions` 只读执行历史；
+- Canvas 读取时投影 Task/Attempt/ProviderJob/Result ID，保存时剥离客户端运行时 ID；
+- 成功链、上游状态不明、排队即取消后 Retry、租约恢复、迟到观察、原子回滚和投影边界测试合同。
+
+仍需用户明确要求后执行：
+
+- Go repository/service/handler 最小测试；
+- Web TypeScript typecheck、相关测试和 production build；
+- 登录态浏览器中的费用确认、显式提交、状态刷新与历史展示验收（对应 UI 尚未实现）；
+- 一个受控测试渠道的真实 Provider 调用、轮询、Result 下载和数据库核对；
+- 真实媒体可播放性与视觉质量验收。
+
+在上述验证完成前，不得把当前变化描述为真实 Provider、真实媒体、浏览器交互或生产验收通过。

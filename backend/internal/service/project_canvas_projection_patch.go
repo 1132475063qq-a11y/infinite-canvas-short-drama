@@ -154,6 +154,15 @@ func applyCanvasProjectionPatches(raw json.RawMessage, patches []model.CanvasPro
 		}
 		domainRef, _ := node["domainRef"].(map[string]any)
 		domainRef["taskId"] = patch.TaskID
+		if patch.GenerationAttemptID != "" {
+			domainRef["generationAttemptId"] = patch.GenerationAttemptID
+		}
+		if patch.ProviderJobID != "" {
+			domainRef["providerJobId"] = patch.ProviderJobID
+		}
+		if patch.ResultID != "" {
+			domainRef["resultId"] = patch.ResultID
+		}
 		changed = true
 	}
 	if !changed {
@@ -169,10 +178,10 @@ func applyCanvasProjectionPatches(raw json.RawMessage, patches []model.CanvasPro
 	return json.RawMessage(encoded), nil
 }
 
-// stripClientFilmGenerationTaskClaims ensures DomainRef.taskId stays a
-// server-owned runtime projection field. Old browser snapshots may contain a
-// previously read task ID, but it is intentionally removed before persistence
-// and restored only by applyCanvasProjectionPatches when still valid.
+// stripClientFilmGenerationTaskClaims ensures execution IDs stay server-owned
+// runtime projection fields. Old browser snapshots may contain values read
+// earlier, but they are removed before persistence and restored only from the
+// current execution tables when the target still matches.
 func stripClientFilmGenerationTaskClaims(raw json.RawMessage) (json.RawMessage, error) {
 	var payload map[string]any
 	if err := json.Unmarshal(raw, &payload); err != nil {
@@ -192,9 +201,11 @@ func stripClientFilmGenerationTaskClaims(raw json.RawMessage) (json.RawMessage, 
 		if !ok {
 			continue
 		}
-		if _, exists := domainRef["taskId"]; exists {
-			delete(domainRef, "taskId")
-			changed = true
+		for _, field := range []string{"taskId", "generationAttemptId", "providerJobId", "resultId"} {
+			if _, exists := domainRef[field]; exists {
+				delete(domainRef, field)
+				changed = true
+			}
 		}
 	}
 	if !changed {

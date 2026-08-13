@@ -585,7 +585,11 @@ func (s *Service) LogAPICall(log model.ApiCallLog) error {
 			next := time.Now().Add(5 * time.Second)
 			nextPollAt = &next
 		}
-		if err := s.repo.UpdateTaskProviderState(log.TaskID, log.ProviderRequestID, stage, nextPollAt); err != nil {
+		if err := s.repo.RecordTaskProviderObservation(repository.ProviderJobObservation{
+			TaskID: log.TaskID, AttemptNumber: log.AttemptNumber, ProviderRequestID: log.ProviderRequestID, PollStage: stage,
+			ProviderStatus: log.ProviderStatus, Status: providerJobStatusFromAPICall(log),
+			Error: log.Error, NextPollAt: nextPollAt, ObservedAt: log.CreatedAt,
+		}); err != nil {
 			return err
 		}
 	}

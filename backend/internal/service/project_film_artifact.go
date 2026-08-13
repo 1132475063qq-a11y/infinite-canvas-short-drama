@@ -3,6 +3,8 @@ package service
 import (
 	"encoding/json"
 	"errors"
+	"math"
+	"strconv"
 	"strings"
 	"time"
 
@@ -209,8 +211,8 @@ func validateGenerationRequestPayload(payload map[string]any) error {
 	if payloadString(payload, "promptArtifactId") == "" || payloadString(payload, "compiledPrompt") == "" {
 		return BadAuthRequest("Generation Request 必须包含已编译 Prompt Pack 的版本引用")
 	}
-	if mediaType != "audio" && payloadString(payload, "aspectRatio") == "" {
-		return BadAuthRequest("Generation Request 必须指定画幅比例")
+	if mediaType != "audio" && !validGenerationAspectRatio(payloadString(payload, "aspectRatio")) {
+		return BadAuthRequest("Generation Request 必须指定有效画幅比例")
 	}
 	if payloadString(payload, "outputIntent") == "" {
 		return BadAuthRequest("Generation Request 必须说明输出用途")
@@ -219,6 +221,21 @@ func validateGenerationRequestPayload(payload map[string]any) error {
 		return BadAuthRequest("视频 Generation Request 必须指定有效时长")
 	}
 	return nil
+}
+
+func validGenerationAspectRatio(value string) bool {
+	value = strings.ToLower(strings.TrimSpace(strings.ReplaceAll(value, "×", "x")))
+	separator := ":"
+	if strings.Contains(value, "x") {
+		separator = "x"
+	}
+	parts := strings.Split(value, separator)
+	if len(parts) != 2 {
+		return false
+	}
+	width, widthErr := strconv.ParseFloat(strings.TrimSpace(parts[0]), 64)
+	height, heightErr := strconv.ParseFloat(strings.TrimSpace(parts[1]), 64)
+	return widthErr == nil && heightErr == nil && width > 0 && height > 0 && !math.IsInf(width, 0) && !math.IsInf(height, 0) && !math.IsNaN(width) && !math.IsNaN(height)
 }
 
 // Generation Request is a provider-independent production fact, not a generic

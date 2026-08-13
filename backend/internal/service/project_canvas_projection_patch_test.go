@@ -26,6 +26,9 @@ func TestFilmGenerationTaskProjectionKeepsTaskBindingOutsideCanvasPayload(t *tes
 		&model.CanvasProject{},
 		&model.CanvasProjectionPatch{},
 		&model.Task{},
+		&model.GenerationAttempt{},
+		&model.ProviderJob{},
+		&model.Result{},
 	); err != nil {
 		t.Fatal(err)
 	}
@@ -210,6 +213,36 @@ func TestCanvasProjectionDoesNotApplyAfterCanvasMovesToAnotherProject(t *testing
 	}
 }
 
+func TestCanvasProjectionAppliesOnlyServerRuntimeExecutionFacts(t *testing.T) {
+	raw := json.RawMessage(canvasProjectionTestPayload("canvas-runtime", "project-runtime", "generation-node", "generation-request-v1", 1, "browser-task"))
+	projected, err := applyCanvasProjectionPatches(raw, []model.CanvasProjectionPatch{{
+		PatchKind:             CanvasProjectionPatchKindFilmGenerationTask,
+		TargetProjectID:       "project-runtime",
+		TargetArtifactID:      "generation-request-v1",
+		TargetArtifactVersion: 1,
+		TaskID:                "server-task",
+		GenerationAttemptID:   "server-attempt",
+		ProviderJobID:         "server-provider-job",
+		ResultID:              "server-result",
+	}}, "project-runtime", time.Time{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	node, err := canvasProjectionNodeByID(projected, "generation-node")
+	if err != nil {
+		t.Fatal(err)
+	}
+	domainRef, _ := node["domainRef"].(map[string]any)
+	for key, expected := range map[string]string{
+		"taskId": "server-task", "generationAttemptId": "server-attempt",
+		"providerJobId": "server-provider-job", "resultId": "server-result",
+	} {
+		if domainRef[key] != expected {
+			t.Fatalf("runtime field %s = %#v, want %q", key, domainRef[key], expected)
+		}
+	}
+}
+
 func canvasProjectionTestPayload(canvasID string, projectID string, nodeID string, artifactID string, artifactVersion int, taskID string) string {
 	domainRef := map[string]any{
 		"projectId":       projectID,
@@ -219,6 +252,9 @@ func canvasProjectionTestPayload(canvasID string, projectID string, nodeID strin
 	}
 	if taskID != "" {
 		domainRef["taskId"] = taskID
+		domainRef["generationAttemptId"] = "browser-injected-attempt"
+		domainRef["providerJobId"] = "browser-injected-provider-job"
+		domainRef["resultId"] = "browser-injected-result"
 	}
 	payload := map[string]any{
 		"id":        canvasID,

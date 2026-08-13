@@ -2,6 +2,7 @@ package handler
 
 import (
 	"net/http"
+	"time"
 
 	"infinite-canvas/backend/internal/service"
 
@@ -609,6 +610,50 @@ func RegisterProjectRoutes(r *gin.RouterGroup, svc *service.Service) {
 			return
 		}
 		ok(c, gin.H{"providerRoutes": catalog})
+	})
+	r.GET("/projects/:id/film-generation-requests/:artifactId/executions", func(c *gin.Context) {
+		user, err := currentUser(c, svc)
+		if err != nil {
+			failService(c, err)
+			return
+		}
+		history, err := svc.ProjectFilmGenerationExecutions(user.ID, c.Param("id"), c.Param("artifactId"))
+		if err != nil {
+			if service.IsProjectNotFound(err) {
+				fail(c, http.StatusNotFound, err)
+				return
+			}
+			failService(c, err)
+			return
+		}
+		ok(c, gin.H{"executionHistory": history})
+	})
+	r.POST("/projects/:id/film-generation-requests/:artifactId/tasks", func(c *gin.Context) {
+		user, err := currentUser(c, svc)
+		if err != nil {
+			failService(c, err)
+			return
+		}
+		policy, available := loadRuntimePolicy(c, svc)
+		if !available || !enforceRateLimit(c, "tasks:"+user.ID, policy.Request.TaskCreatePerMinute, time.Minute) {
+			return
+		}
+		c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 16<<10)
+		var req service.SubmitFilmGenerationTaskRequest
+		if err := c.ShouldBindJSON(&req); err != nil {
+			fail(c, http.StatusBadRequest, err)
+			return
+		}
+		submission, err := svc.SubmitFilmGenerationTask(user.ID, c.Param("id"), c.Param("artifactId"), req)
+		if err != nil {
+			if service.IsProjectNotFound(err) {
+				fail(c, http.StatusNotFound, err)
+				return
+			}
+			failService(c, err)
+			return
+		}
+		ok(c, gin.H{"submission": submission})
 	})
 	r.GET("/projects/:id/ecommerce-artifacts", func(c *gin.Context) {
 		user, err := currentUser(c, svc)

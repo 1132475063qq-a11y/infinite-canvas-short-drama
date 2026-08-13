@@ -142,10 +142,14 @@ func (s *Service) filmGenerationProviderRouteForCandidate(draft FilmGenerationTa
 	} else {
 		route.Blockers = append(route.Blockers, "模型尚未配置用户积分价格")
 	}
-	if _, err := s.resolveFilmGenerationProviderRoute(draft, channel.ID, channelModel.ModelKey); err != nil {
+	resolution, err := s.resolveFilmGenerationProviderRoute(draft, channel.ID, channelModel.ModelKey)
+	if err != nil {
 		// 不向非管理员泄漏渠道 URL、鉴权头或密钥缺失细节。
 		route.Blockers = append(route.Blockers, "服务端渠道契约尚未完成，暂不能提交")
 		return route
+	}
+	if _, _, err := filmGenerationRuntimeConfig(draft, resolution); err != nil {
+		route.Blockers = append(route.Blockers, "模型能力不支持当前请求的画幅、时长或生成模式")
 	}
 	if strings.TrimSpace(channel.BaseURL) == "" || strings.TrimSpace(channel.APIKey) == "" {
 		route.Blockers = append(route.Blockers, "服务端渠道配置尚不完整")

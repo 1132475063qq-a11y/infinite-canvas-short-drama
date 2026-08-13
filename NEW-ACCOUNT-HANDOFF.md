@@ -1,166 +1,132 @@
 # 新账号续接说明：AI Creative Studio（短剧 + 电商）无限画布
 
-更新时间：2026-08-13
+本文件与当前 Film Provider Gateway 事实链改动在同一次 Git 提交中保存。新账号应以 GitHub 上 `codex/phase4-film-nodes` 分支的最新提交为准，不要依赖旧会话里的口头状态。
 
-## 1. 当前项目位置
+## 1. 项目与交接边界
 
-本地正式仓库：
+| 项目项 | 当前值 |
+| --- | --- |
+| 本地正式仓库 | `/Users/xiangyuqin/Downloads/infinite-canvas-short-drama` |
+| GitHub 仓库 | `https://github.com/1132475063qq-a11y/infinite-canvas-short-drama` |
+| 当前分支 | `codex/phase4-film-nodes` |
+| 开发方向 | Film Production Canvas 为主；Ecommerce Creative Studio 保持独立 Prototype A 边界 |
 
-```text
-/Users/xiangyuqin/Downloads/infinite-canvas-short-drama
-```
+切换 Codex / ChatGPT 账号时，本地仓库、Git 历史、Docker 数据和 GitHub 远端代码仍留在电脑上；当前 Codex 任务、侧边栏历史、账号额度、订阅和记忆不会自动迁移。新账号只需打开同一个本地目录，或从 GitHub 拉取上述分支。
 
-GitHub 仓库：
+不要把 API Key、GitHub Token、Cookie、登录码或本地环境文件提交到仓库。
 
-```text
-https://github.com/1132475063qq-a11y/infinite-canvas-short-drama
-```
+## 2. 本轮已落地：Film Provider Gateway 执行事实链
 
-当前开发分支：
+以下内容已经写入代码与测试合同，但本轮没有运行测试、typecheck、build、浏览器交互或真实 Provider 调用；它们是“已实现、待运行验收”，不是已完成的生产能力。
 
-```text
-codex/phase4-film-nodes
-```
+### 已实现的后端事实源与事务边界
 
-最近阶段提交：
+- `FilmArtifact(generation_request)` 是不可变的生成请求快照，精确冻结 Prompt Pack、Shot Contract 与资产版本来源。
+- 原子提交路由会在同一事务中创建 queued `Task`、初始 queued `GenerationAttempt`、可选计费预留，以及服务端 `CanvasProjectionPatch`；失败时全部回滚。
+- `GenerationAttempt` 保存每次领取、租约恢复、取消和 Retry 的执行编号；`ProviderJob` 按 Attempt 归属上游任务号；成功时 `Task`、Attempt 与 `Result(kind = film_generation_result)` 同事务落库。
+- 失效 Worker 的进度、终态与完成写入必须匹配原租约，不能覆盖后继 Attempt；迟到的上游观察会保留在原 Attempt，不会改写新 Attempt 的 Task 指针。
+- 已知上游 ID、但没有确认终态证据的失败保留为 `uncertain`，避免错误标成明确失败；明确 4xx 拒绝仍可记录为失败。
+- 新增只读执行历史接口：`GET /projects/:projectId/film-generation-requests/:artifactId/executions`。
+- Canvas 读取时由服务端临时投影 `taskId`、`generationAttemptId`、`providerJobId`、`resultId`；浏览器保存时会剥离这些运行时 ID，Canvas 不是事实源。
 
-```text
-f4d7cf4 feat(film): add versioned production artifacts
-```
+### 已写入、尚未运行的测试合同
 
-## 2. 换 Codex 账号时
+- 原子创建与幂等重放；损坏事实链重建保护；事务回滚；路由漂移拒绝。
+- 成功链、上游状态不明、排队后取消再 Retry、租约恢复、迟到 Provider 观察和过期 Worker 完成写入隔离。
+- Canvas Projection Patch 只投影服务端真实绑定，客户端不能伪造或擦除运行时 ID。
 
-只更换 Codex / ChatGPT 账号，不会修改本地 Git 仓库、GitHub 登录状态、分支或 Docker 数据。
+完整待验证清单见 [docs/content/docs/pending-test.mdx](docs/content/docs/pending-test.mdx)，完整合同见 [docs/production-canvas/film-generation-request-contract.md](docs/production-canvas/film-generation-request-contract.md)。
 
-新账号进入 Codex 后：
+## 3. 已完成的前置阶段
 
-1. 打开本地目录 `/Users/xiangyuqin/Downloads/infinite-canvas-short-drama`。
-2. 把下面“新会话第一条指令”发给新会话。
-3. 不要重新克隆项目，不要重新初始化 Git，不要删除 Docker volume。
-4. 新会话必须先检查当前分支、Git 状态、`CONTINUE-HERE.md` 和 Ecommerce 附录，再开始下一阶段。
+### Film Production Canvas
 
-## 3. 新会话第一条指令
+- Phase 1：Film Semantic Layer 基础。
+- Phase 1.5：FilmNodeKind、Typed Port、CanvasDocumentV2 契约冻结。
+- Phase 2：Grid、Snap、Alignment、Distribution、Scene Lane、Collision 核心布局能力。
+- Phase 3：Project Navigator、顶部生产状态、Inspector Shell、Bottom Shot Strip；此前已有独立的自动测试和浏览器验收记录。
+- Phase 4：Scene、Shot、Character、Location、Prop、Acting、Prompt Pack、Generation Request、只读 Task Draft、只读 Provider Route Catalog、revision-safe Canvas Projection Patch。
+- 当前新增的 Phase 4/5 事实链以上述“待运行验收”边界为准，不能把以前的测试通过结果外推到本次改动。
+
+### Ecommerce Creative Studio（保持 Prototype A）
+
+- 已有 ProductDNA、CreativeDirection、ScenePlan、CreativeShotPlan、QAReport 和 Result Grid 的独立合同与后端持久化原型。
+- 已有 Provider Evaluation 记录合同，可以记录候选渠道、输入指纹、结果、成本、失败证据、盲测与 GO/MODIFY/STOP 决策。
+- 尚未做真实 Provider Bake-off、真实媒体生成、Agent Runtime、完整 Ecommerce Canvas 或 Full V1；不要把文档规划误报为已实现。
+
+## 4. 仍未完成：严格的下一步顺序
+
+### Film：先完成一条可验收的生成链
+
+1. **运行本轮针对性验收**：先验证新增后端合同、迁移和前端类型边界；任何失败先定位原因，不扩大为重写。
+2. **补前端显式交互**：在 Inspector 中显示费用确认、明确提交动作和只读执行历史；读取 Inspector 绝不能产生费用。
+3. **受控单 Provider 接受测试**：只选一个已配置的图片或视频渠道，由后端 Secret 管理密钥，以非生产素材跑一次真实任务，检查数据库事实、Canvas 投影与 Result。
+4. **结果与人工审核**：再做 Result 展示、QC、Retry UI，以及《寄生广告》SC01 Golden Project。
+
+当前禁止：一开始接多家 Provider、前端保存 API Key、提前实现复杂 Agent Runtime、多人协作或 Full Ecommerce V1。
+
+### Ecommerce：等真实输入与渠道明确后再推进
+
+1. 用户提供实际可调用的候选 Provider、产品图和允许测试的素材。
+2. 先执行 P0.6 Provider Evaluation / Bake-off，记录成本、失败、质量和盲测证据。
+3. 只在 Bake-off 达到门槛后，继续 `Product Upload → ProductDNA → CreativeDirection → Lifestyle Tabletop → CreativeShotPlan → Result Grid` 的真实闭环。
+
+仍只做 `still-life.lifestyle-tabletop`；卖点图、详情页、UGC、视频、文案和更多 Skill 都不在当前 Prototype A 范围内。
+
+## 5. 新账号的第一条指令
+
+将下面文字直接发给新账号的 Codex：
 
 ```text
 请接手本地项目：
 /Users/xiangyuqin/Downloads/infinite-canvas-short-drama
 
 先完整读取：
-1. /Users/xiangyuqin/Downloads/infinite-canvas-short-drama/NEW-ACCOUNT-HANDOFF.md
-2. /Users/xiangyuqin/Downloads/infinite-canvas-short-drama/CONTINUE-HERE.md
-3. /Users/xiangyuqin/Downloads/infinite-canvas-short-drama/docs/production-canvas/ecommerce-prototype-addendum.md
-4. /Users/xiangyuqin/Downloads/infinite-canvas-short-drama/docs/production-canvas/ecommerce-agent-team-v1.2.1-codex-ready.md
-5. /Users/xiangyuqin/Downloads/infinite-canvas-short-drama/docs/production-canvas/ecommerce-prototype-implementation-spec-v1.0.md
-6. /Users/xiangyuqin/Downloads/infinite-canvas-short-drama/docs/production-canvas/film-generation-request-contract.md
-7. /Users/xiangyuqin/Downloads/电商创意工作台设计.md
-8. /Users/xiangyuqin/Downloads/短剧AI无限画布_Production_Canvas_v2_超详细发展规划.md
-9. 仓库内 AGENTS.md
+1. NEW-ACCOUNT-HANDOFF.md
+2. CONTINUE-HERE.md
+3. AGENTS.md
+4. docs/content/docs/pending-test.mdx
+5. docs/production-canvas/film-generation-request-contract.md
+6. docs/production-canvas/ecommerce-prototype-addendum.md
+7. docs/production-canvas/ecommerce-agent-team-v1.2.1-codex-ready.md
+8. docs/production-canvas/ecommerce-prototype-implementation-spec-v1.0.md
+9. /Users/xiangyuqin/Downloads/短剧AI无限画布_Production_Canvas_v2_超详细发展规划.md
+10. /Users/xiangyuqin/Downloads/电商创意工作台设计.md
 
-然后执行 git status -sb、git branch --show-current、git log -8 --oneline，确认当前分支为 codex/phase4-film-nodes，且 Film 阶段提交 f4d7cf4 已存在。
+然后只做只读检查：git status -sb、git branch --show-current、git log -8 --oneline、git remote -v、git rev-list --left-right --count HEAD...@{upstream}。
 
-不要重做 Phase 1、Phase 1.5、Phase 2、Phase 3。Film 的 Generation Request 版本事实、Canvas Projection、安全边界、只读 `GenerationRequest → Task Draft` 合同、只读 Provider Route Catalog 和 revision-safe Canvas Projection Patch 已经完成；下一步实现 Provider Gateway 的原子 Task 创建。Ecommerce 的 P0 合同和 Provider Evaluation 记录合同已经完成，下一步只是在用户提供实际可调用渠道和素材后执行真实 Bake-off，再从 Prototype A 真实生成/QA 开始。先保持 Film/Ecommerce Domain 隔离，并按 `AGENTS.md` 的当前验证纪律执行；不要提前接入多家 Provider、Full Ecommerce V1 或复杂 Agent Runtime。
+以 GitHub 上 codex/phase4-film-nodes 的最新提交为事实基线。不要重做 Film Phase 1–4；当前新增的 Provider Gateway 原子提交、GenerationAttempt、ProviderJob、Film Result、执行历史与 Canvas 运行时投影已经写入代码，但还没有运行验收，更没有真实 Provider 或真实媒体结果。
+
+下一步先审阅并运行针对性验证；验证通过后才做 Inspector 的费用确认、显式提交和执行历史 UI，再做单 Provider 受控接受测试。Film 与 Ecommerce Domain 必须隔离；不要提前接多家 Provider、Full Ecommerce V1 或复杂 Agent Runtime。
 ```
 
-## 4. 当前已经完成
+## 6. 新账号恢复步骤
 
-- Phase 1：Film Semantic Layer 基础。
-- Phase 1.5：26 种 FilmNodeKind、Typed Port、CanvasDocumentV2 契约冻结。
-- Phase 2：Grid、Snap、Alignment、Distribution、Scene Lane、Collision 核心能力。
-- Phase 3：完整 Project Navigator、顶部生产状态、Inspector Shell、Bottom Shot Strip。
-- Phase 4 第一批：Scene、Shot、Character、Location、Prop、Acting、Prompt Pack 的事实源投影和不可变 FilmArtifact 版本。
-- Phase 4 Generation Request：Prompt Pack 来源冻结、`generation_request` 版本 Artifact、SourceRefs、安全拒绝规则、画布节点/Inspector/自动布局，以及按精确 Artifact 版本读取的只读 Task Draft 合同、只读 Provider Route Catalog 和 revision-safe Canvas Projection Patch；尚未创建真实 Provider Task。
-- Phase 3 自动测试：78/78 通过。
-- Phase 4 Acting / Prompt Pack 自动测试：88/88 通过；typecheck、production build 和 `git diff --check` 通过。
-- 本次新增的 Generation Request、Provider Route Catalog 与 Canvas Projection Patch 合同测试已写入工作区，但按当前 `AGENTS.md` 的默认验证纪律未运行；上述 88/88 与构建结果仅代表此前 Acting / Prompt Pack 验收，不能外推为本次验收。
-- Ecommerce 文档合同：已同步完整 838 行架构审查记录；Provider-free Prototype A 合同、Provider Evaluation 记录合同、后端 `EcommerceArtifact` 持久化 API、项目类型入口、独立商品资产页和开发面板已完成当前原型边界，真实 Provider Bake-off、Agent Runtime 和完整 Ecommerce Canvas 仍未开始。
-- 历史 TypeScript typecheck、production build 和三档真实浏览器验收结果见 `CONTINUE-HERE.md`；它们不替代本次 Generation Request 的待验证项。
-
-详细状态和未完成项以 `CONTINUE-HERE.md` 为准。
-
-## 5. 下一步范围（两条 Domain 隔离）
-
-```text
-Film Phase 4/5：Provider Gateway 路由解析与原子 Task 创建边界
-
-Ecommerce Prototype：Product Upload → ProductDNA → CreativeDirection → Lifestyle Tabletop → CreativeShotPlan → Result Grid
-```
-
-Film 只做：
-
-- 保持已完成的 Generation Request / Task Draft 合同、只读 Provider Route Catalog 和 revision-safe Canvas Projection Patch；下一步由 Provider Gateway 在同一事务内重新解析路由、校验能力/计费、创建 Task 并写入对应 Patch，成功后读取 Canvas 才会投影 `DomainRef.taskId`。
-- 后端 Project / Scene / Shot / Asset / AssetVersion / FilmArtifact 是事实源；Canvas 仅做 Projection。
-
-Ecommerce 只做：
-
-- 在现有独立合同、后端持久化 API 和开发面板基础上，先使用 `web/src/ecommerce/evaluation/provider-evaluation.ts` 记录合同，接入用户明确提供且实际可调用的候选渠道，完成 P0.6 Provider Evaluation / Bake-off。
-- 统一记录候选 Provider 的输入、成本、失败原因、结果引用和盲测数据；真实生成仍不得绕过 Provider Gateway。
-- 只使用 `ProductIntelligenceAgent`、`CreativeDirectorAgent`、`SceneDirectorAgent` 这三个 Agent 合同。
-- 只实现 `still-life.lifestyle-tabletop`；`fashion.natural-walk` 在 A 通过门禁后再做。
-- 保持 ProductDNA、CreativeShotPlan、QAReport、Benchmark 的版本和证据边界。
-
-当前禁止：
-
-- Ecommerce Full V1、完整五项 Skill、Detail Page、卖点图、视频、UGC、Copywriting。
-- 多 Provider 同时接入、绕过 Provider Gateway 或前端保存 API Key。
-- 多人协作。
-- 把规划文档中的未来目标误报为已经实现。
-
-## 6. 本地运行说明
-
-标准开发启动方式：
-
-```bash
-cd /Users/xiangyuqin/Downloads/infinite-canvas-short-drama
-LOCAL_UID=$(id -u) LOCAL_GID=$(id -g) docker compose -f docker-compose.dev.yml up --build
-```
-
-标准地址：
-
-```text
-http://localhost:3000
-```
-
-注意：当前机器上 `/Users/xiangyuqin/Desktop/Infinite-Canvas-main` 曾占用 `3000` 端口。Phase 3 验收时，本仓库前端临时使用 `http://localhost:3001`。如果看到旧版侧栏或旧 Inspector，先检查端口对应的进程和工作目录，不要误判代码没有更新。
-
-## 7. 如果还要更换 GitHub 账号
-
-换 Codex 账号不要求换 GitHub 账号。只有明确要把 GitHub 登录也切换时才执行：
-
-```bash
-gh auth status
-gh auth logout -h github.com
-gh auth login -h github.com -p https -w
-gh auth setup-git
-gh auth status
-```
-
-如果新 GitHub 账号没有原仓库写权限，可选择：
-
-1. 继续使用原 GitHub 账号推送；或
-2. 给新账号添加仓库协作者权限；或
-3. Fork 后把新仓库设置为新的 remote。
-
-不要把 GitHub Token、API Key、Cookie 或登录码写入本文件、项目文件或 Git 提交。
-
-## 8. 恢复检查
-
-新会话开始时运行：
+### 使用现有本地目录
 
 ```bash
 cd /Users/xiangyuqin/Downloads/infinite-canvas-short-drama
 git status -sb
+git pull --ff-only
 git branch --show-current
-git log -8 --oneline
-git remote -v
+git log -1 --oneline
 git rev-list --left-right --count HEAD...@{upstream}
 ```
 
-正确状态应包括：
+最后一行是 `0 0` 时，表示本地与 GitHub 对应分支同步。
 
-```text
-codex/phase4-film-nodes
-f4d7cf4 feat(film): add versioned production artifacts
-0 0
+### 在另一台电脑重新获取代码
+
+```bash
+git clone https://github.com/1132475063qq-a11y/infinite-canvas-short-drama.git
+cd infinite-canvas-short-drama
+git switch --track origin/codex/phase4-film-nodes
 ```
 
-最后一行 `0 0` 表示本地与 GitHub 对应分支完全同步。
+如果新 GitHub 账号没有仓库写权限，继续使用原 GitHub 登录推送，或由仓库所有者添加新账号为协作者；不要把访问令牌写进代码或交接文档。
+
+## 7. 启动与验收提醒
+
+项目的本地启动、端口与历史验收记录见 [CONTINUE-HERE.md](CONTINUE-HERE.md)。不要因为页面能打开就把本轮后端事实链视为验收通过；本轮尚缺真实后端运行、UI 点击和真实 Provider / 媒体质量证据。
+
+本次 Git 推送只保存代码和交接信息，不会启动服务、调用模型或改变任何 Provider 配置。

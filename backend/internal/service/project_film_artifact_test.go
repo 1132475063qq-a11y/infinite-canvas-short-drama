@@ -50,6 +50,14 @@ func TestValidateGenerationRequestPayloadRequiresCompiledPromptAndRejectsSecrets
 	if err := validateFilmArtifactPayload(FilmArtifactTypeGenerationRequest, missingPrompt); err == nil {
 		t.Fatal("generation request must require a compiled prompt snapshot")
 	}
+	invalidRatio := map[string]any{}
+	for key, value := range valid {
+		invalidRatio[key] = value
+	}
+	invalidRatio["aspectRatio"] = "not-a-ratio"
+	if err := validateFilmArtifactPayload(FilmArtifactTypeGenerationRequest, invalidRatio); err == nil {
+		t.Fatal("generation request must reject an invalid aspect ratio")
+	}
 	withSecret := map[string]any{}
 	for key, value := range valid {
 		withSecret[key] = value
@@ -227,7 +235,11 @@ func TestFilmGenerationProviderRoutesExposeOnlyRedactedSystemCandidates(t *testi
 	promptPack := model.FilmArtifact{ID: "prompt-pack-routes", ProjectID: project.ID, ShotID: shot.ID, ArtifactType: FilmArtifactTypeVideoPromptPack, ObjectVersion: 1, Status: "ready", PayloadJSON: `{"compiledPrompt":"Frozen route prompt"}`, CreatedAt: now, UpdatedAt: now}
 	request := model.FilmArtifact{ID: "generation-request-routes", ProjectID: project.ID, ShotID: shot.ID, ArtifactType: FilmArtifactTypeGenerationRequest, ObjectVersion: 1, Status: "ready", PayloadJSON: `{"promptArtifactId":"prompt-pack-routes","promptArtifactVersion":1,"compiledPrompt":"Frozen route prompt","mediaType":"video","aspectRatio":"9:16","durationMs":5000,"outputIntent":"首轮镜头生成"}`, SourceRefsJSON: `["prompt-pack-routes"]`, CreatedAt: now, UpdatedAt: now}
 	channel := model.ModelChannel{ID: "channel-routes", Scope: model.ChannelScopeSystem, Enabled: true, Name: "受控视频渠道", BaseURL: "https://private-provider.example/v1", APIKey: "server-only-api-key", APIFormat: "openai", ModelsJSON: `["video-model"]`, CreatedAt: now, UpdatedAt: now}
-	videoModel := model.ChannelModel{ID: "model-routes", ChannelID: channel.ID, ModelKey: "video-model", DisplayName: "受控视频模型", Capability: "video", Protocol: model.ChannelInterfaceNewAPIVideo, BillingMode: "per_second", UnitPriceMicrocredits: 100_000, PriceConfigured: true, Enabled: true, CapabilityVersion: 3, CreatedAt: now, UpdatedAt: now}
+	capabilityJSON, err := json.Marshal(DefaultModelCapabilityConfigForModel(string(model.ChannelInterfaceNewAPIVideo), "video-model"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	videoModel := model.ChannelModel{ID: "model-routes", ChannelID: channel.ID, ModelKey: "video-model", DisplayName: "受控视频模型", Capability: "video", Protocol: model.ChannelInterfaceNewAPIVideo, BillingMode: "per_second", UnitPriceMicrocredits: 100_000, PriceConfigured: true, Enabled: true, CapabilityConfigJSON: string(capabilityJSON), CapabilityVersion: 3, CreatedAt: now, UpdatedAt: now}
 	for _, item := range []any{&project, &shot, &promptPack, &request, &channel, &videoModel} {
 		if err := db.Create(item).Error; err != nil {
 			t.Fatal(err)

@@ -39,6 +39,9 @@ export type FilmNodeDomainRef = {
     assetId?: string;
     assetVersionId?: string;
     taskId?: string;
+    generationAttemptId?: string;
+    providerJobId?: string;
+    resultId?: string;
     resourceId?: string;
     agentId?: string;
     skillId?: string;

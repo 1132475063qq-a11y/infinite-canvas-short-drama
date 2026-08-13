@@ -211,9 +211,10 @@ func (r *Repository) CreateTaskWithActiveLimit(task *model.Task, activeTaskLimit
 	})
 }
 
-func (r *Repository) RetryTaskWithBilling(userID string, taskID string, order *model.BillingOrder, activeTaskLimit int) (*model.Task, error) {
+func (r *Repository) RetryTaskWithBilling(userID string, taskID string, order *model.BillingOrder, attempt *model.GenerationAttempt, activeTaskLimit int) (*model.Task, error) {
 	var task model.Task
 	err := r.db.Transaction(func(tx *gorm.DB) error {
+		now := time.Now()
 		if err := enforceActiveTaskLimit(tx, userID, activeTaskLimit); err != nil {
 			return err
 		}
@@ -228,7 +229,7 @@ func (r *Repository) RetryTaskWithBilling(userID string, taskID string, order *m
 			"provider_request_id": "", "poll_stage": "", "next_poll_at": nil,
 			"provider_cancel_status": "", "provider_cancel_error": "", "provider_cancel_attempts": 0,
 			"provider_cancel_requested_at": nil, "provider_cancelled_at": nil, "provider_cancel_next_check_at": nil,
-			"lease_owner": "", "lease_expires_at": nil, "updated_at": time.Now(),
+			"lease_owner": "", "lease_expires_at": nil, "updated_at": now,
 		}
 		if order != nil {
 			updates["billing_order_id"] = order.ID
@@ -248,7 +249,10 @@ func (r *Repository) RetryTaskWithBilling(userID string, taskID string, order *m
 		if err := tx.Delete(&model.TaskTextDelta{}, "user_id = ? AND task_id = ?", userID, taskID).Error; err != nil {
 			return err
 		}
-		return tx.First(&task, "id = ? AND user_id = ?", taskID, userID).Error
+		if err := tx.First(&task, "id = ? AND user_id = ?", taskID, userID).Error; err != nil {
+			return err
+		}
+		return queueGenerationRetryAttempt(tx, &task, attempt, now)
 	})
 	return &task, err
 }
