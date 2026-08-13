@@ -44,6 +44,7 @@ func Models() []any {
 		&model.CanvasUnitLink{},
 		&model.Scene{},
 		&model.Shot{},
+		&model.FilmArtifact{},
 		&model.ShotAssetReference{},
 		&model.WorkflowTemplateVersion{},
 		&model.WorkflowInstance{},

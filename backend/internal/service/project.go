@@ -76,6 +76,7 @@ type ProjectDetail struct {
 	Workflows       []ProjectWorkflowDetail       `json:"workflows"`
 	Scenes          []model.Scene                 `json:"scenes"`
 	Shots           []model.Shot                  `json:"shots"`
+	FilmArtifacts   []model.FilmArtifact          `json:"filmArtifacts"`
 	ShotReferences  []model.ShotAssetReference    `json:"shotReferences"`
 	AssetCandidates []model.ProjectAssetCandidate `json:"assetCandidates"`
 }
@@ -151,6 +152,27 @@ func (s *Service) ProjectDetail(userID string, id string) (ProjectDetail, error)
 	if err != nil {
 		return ProjectDetail{}, err
 	}
+	contractsAdded, err := s.ensureLegacyShotContracts(project.ID, shots)
+	if err != nil {
+		return ProjectDetail{}, err
+	}
+	if contractsAdded {
+		if err := s.repo.BumpProjectRevision(project.ID); err != nil {
+			return ProjectDetail{}, err
+		}
+		project, err = s.repo.ProjectForUser(userID, id)
+		if err != nil {
+			return ProjectDetail{}, err
+		}
+		shots, err = s.repo.ProjectShots(project.ID)
+		if err != nil {
+			return ProjectDetail{}, err
+		}
+	}
+	filmArtifacts, err := s.repo.ProjectFilmArtifacts(project.ID)
+	if err != nil {
+		return ProjectDetail{}, err
+	}
 	shotReferences, err := s.repo.ProjectShotAssetReferences(project.ID)
 	if err != nil {
 		return ProjectDetail{}, err
@@ -159,7 +181,45 @@ func (s *Service) ProjectDetail(userID string, id string) (ProjectDetail, error)
 	if err != nil {
 		return ProjectDetail{}, err
 	}
-	return ProjectDetail{Project: *project, Units: units, Canvases: canvases, CanvasUnitLinks: canvasUnitLinks, Assets: assets, Workflows: workflows, Scenes: scenes, Shots: shots, ShotReferences: shotReferences, AssetCandidates: candidates}, nil
+	return ProjectDetail{Project: *project, Units: units, Canvases: canvases, CanvasUnitLinks: canvasUnitLinks, Assets: assets, Workflows: workflows, Scenes: scenes, Shots: shots, FilmArtifacts: filmArtifacts, ShotReferences: shotReferences, AssetCandidates: candidates}, nil
+}
+
+// ensureLegacyShotContracts promotes pre-Phase-4 shots into the same immutable
+// contract model used by new shots. The migration is idempotent because only
+// shots without a current artifact pointer are considered.
+func (s *Service) ensureLegacyShotContracts(projectID string, shots []model.Shot) (bool, error) {
+	changed := false
+	for index := range shots {
+		shot := shots[index]
+		if shot.ContractArtifactID != "" && shot.ContractVersion > 0 {
+			continue
+		}
+		payload, err := json.Marshal(defaultShotContract(shot.Title, shot.DurationMs))
+		if err != nil {
+			return false, err
+		}
+		now := time.Now()
+		artifact := model.FilmArtifact{
+			ID:                newID(),
+			ProjectID:         projectID,
+			UnitID:            shot.UnitID,
+			SceneID:           shot.SceneID,
+			ShotID:            shot.ID,
+			ArtifactType:      "shot_contract",
+			Status:            shot.Status,
+			PayloadJSON:       string(payload),
+			SourceRefsJSON:    "[]",
+			AuthorityRefsJSON: "[]",
+			CreatedAt:         now,
+			UpdatedAt:         now,
+		}
+		shot.UpdatedAt = now
+		if err := s.repo.SaveShotWithContract(&shot, false, &artifact); err != nil {
+			return false, err
+		}
+		changed = true
+	}
+	return changed, nil
 }
 
 func (s *Service) CreateProject(userID string, req CreateProjectRequest) (model.Project, error) {

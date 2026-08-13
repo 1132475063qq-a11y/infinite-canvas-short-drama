@@ -951,6 +951,9 @@ func (r *Repository) DeleteProject(userID string, id string) error {
 		if err := tx.Where("shot_id IN (?)", shotIDs).Delete(&model.ShotAssetReference{}).Error; err != nil {
 			return err
 		}
+		if err := tx.Where("project_id = ?", id).Delete(&model.FilmArtifact{}).Error; err != nil {
+			return err
+		}
 		if err := tx.Where("project_id = ?", id).Delete(&model.Shot{}).Error; err != nil {
 			return err
 		}
@@ -1054,6 +1057,9 @@ func (r *Repository) DeleteProjectUnit(projectID string, id string) error {
 		}
 		shotIDs := tx.Model(&model.Shot{}).Select("id").Where("project_id = ? AND unit_id = ?", projectID, id)
 		if err := tx.Where("shot_id IN (?)", shotIDs).Delete(&model.ShotAssetReference{}).Error; err != nil {
+			return err
+		}
+		if err := tx.Where("project_id = ? AND unit_id = ?", projectID, id).Delete(&model.FilmArtifact{}).Error; err != nil {
 			return err
 		}
 		if err := tx.Where("project_id = ? AND unit_id = ?", projectID, id).Delete(&model.Shot{}).Error; err != nil {
@@ -1207,6 +1213,12 @@ func (r *Repository) ProjectAssetShotReferenceCount(projectID string, assetID st
 	return count, err
 }
 
+func (r *Repository) ProjectAssetSceneReferenceCount(projectID string, assetID string) (int64, error) {
+	var count int64
+	err := r.db.Model(&model.Scene{}).Where("project_id = ? AND location_asset_id = ?", projectID, assetID).Count(&count).Error
+	return count, err
+}
+
 func (r *Repository) ProjectAssetLinked(projectID string, assetID string) (bool, error) {
 	var count int64
 	err := r.db.Model(&model.ProjectAssetLink{}).Where("project_id = ? AND asset_id = ?", projectID, assetID).Count(&count).Error
@@ -1224,7 +1236,7 @@ func (r *Repository) AssetReferenceCount(assetID string) (int64, error) {
 }
 
 func (r *Repository) UpdateAssetDomain(asset *model.Asset) error {
-	return r.db.Model(&model.Asset{}).Where("id = ? AND user_id = ?", asset.ID, asset.UserID).Updates(map[string]any{"category": asset.Category, "status": asset.Status, "primary_version_id": asset.PrimaryVersionID, "updated_at": asset.UpdatedAt}).Error
+	return r.db.Model(&model.Asset{}).Where("id = ? AND user_id = ?", asset.ID, asset.UserID).Updates(map[string]any{"title": asset.Title, "category": asset.Category, "status": asset.Status, "primary_version_id": asset.PrimaryVersionID, "updated_at": asset.UpdatedAt}).Error
 }
 
 func (r *Repository) AssetVersions(assetID string) ([]model.AssetVersion, error) {
@@ -1252,6 +1264,13 @@ func (r *Repository) ProjectAssetUsageRoles(projectID string, assetID string) ([
 		Where("project_asset_links.project_id = ? AND asset_versions.asset_id = ?", projectID, assetID).
 		Pluck("asset_representations.role", &representationRoles).Error; err != nil {
 		return nil, err
+	}
+	var sceneCount int64
+	if err := r.db.Model(&model.Scene{}).Where("project_id = ? AND location_asset_id = ?", projectID, assetID).Count(&sceneCount).Error; err != nil {
+		return nil, err
+	}
+	if sceneCount > 0 {
+		shotRoles = append(shotRoles, "scene_location")
 	}
 	seen := make(map[string]struct{}, len(shotRoles)+len(representationRoles))
 	for _, role := range append(shotRoles, representationRoles...) {
@@ -1307,6 +1326,18 @@ func (r *Repository) SaveScene(scene *model.Scene, create bool) error {
 	return r.db.Save(scene).Error
 }
 
+func (r *Repository) ProjectAssetForProject(projectID string, assetID string) (*model.Asset, error) {
+	var asset model.Asset
+	err := r.db.Table("assets").Select("assets.*").
+		Joins("JOIN project_asset_links ON project_asset_links.asset_id = assets.id").
+		Where("project_asset_links.project_id = ? AND assets.id = ?", projectID, assetID).
+		First(&asset).Error
+	if err != nil {
+		return nil, err
+	}
+	return &asset, nil
+}
+
 func (r *Repository) SaveShot(shot *model.Shot, create bool) error {
 	if create {
 		return r.db.Create(shot).Error
@@ -1317,7 +1348,101 @@ func (r *Repository) SaveShot(shot *model.Shot, create bool) error {
 	}).Error
 }
 
-func (r *Repository) ReplaceProjectUnitShots(projectID string, unitID string, shots []model.Shot) error {
+// SaveShotWithContract makes the Shot pointer and its current versioned contract
+// advance atomically. A failed artifact write can never leave the Shot pointing
+// at a missing version.
+func (r *Repository) SaveShotWithContract(shot *model.Shot, create bool, artifact *model.FilmArtifact) error {
+	return r.db.Transaction(func(tx *gorm.DB) error {
+		var current model.Shot
+		if !create {
+			if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&current, "id = ? AND project_id = ?", shot.ID, shot.ProjectID).Error; err != nil {
+				return err
+			}
+		}
+		if artifact != nil {
+			var latest int
+			if err := tx.Model(&model.FilmArtifact{}).
+				Where("project_id = ? AND shot_id = ? AND artifact_type = ?", artifact.ProjectID, artifact.ShotID, artifact.ArtifactType).
+				Select("COALESCE(MAX(object_version), 0)").Scan(&latest).Error; err != nil {
+				return err
+			}
+			artifact.ObjectVersion = latest + 1
+			if err := tx.Create(artifact).Error; err != nil {
+				return err
+			}
+			shot.ContractArtifactID = artifact.ID
+			shot.ContractVersion = artifact.ObjectVersion
+		} else if !create {
+			shot.ContractArtifactID = current.ContractArtifactID
+			shot.ContractVersion = current.ContractVersion
+		}
+		if create {
+			return tx.Create(shot).Error
+		}
+		result := tx.Model(&model.Shot{}).Where("id = ? AND project_id = ?", shot.ID, shot.ProjectID).Updates(map[string]any{
+			"unit_id": shot.UnitID, "scene_id": shot.SceneID, "title": shot.Title, "description": shot.Description, "position": shot.Position,
+			"duration_ms": shot.DurationMs, "status": shot.Status, "contract_artifact_id": shot.ContractArtifactID, "contract_version": shot.ContractVersion, "updated_at": shot.UpdatedAt,
+		})
+		if result.Error != nil {
+			return result.Error
+		}
+		if result.RowsAffected != 1 {
+			return gorm.ErrRecordNotFound
+		}
+		return nil
+	})
+}
+
+func (r *Repository) ProjectFilmArtifacts(projectID string) ([]model.FilmArtifact, error) {
+	var artifacts []model.FilmArtifact
+	err := r.db.Where("project_id = ?", projectID).Order("artifact_type asc, shot_id asc, object_version desc").Find(&artifacts).Error
+	return artifacts, err
+}
+
+func (r *Repository) LatestFilmArtifact(projectID string, shotID string, artifactType string) (*model.FilmArtifact, error) {
+	var artifact model.FilmArtifact
+	err := r.db.Where("project_id = ? AND shot_id = ? AND artifact_type = ?", projectID, shotID, artifactType).
+		Order("object_version desc").First(&artifact).Error
+	if err != nil {
+		return nil, err
+	}
+	return &artifact, nil
+}
+
+// SaveFilmArtifactVersion serializes versions for one Shot and advances the
+// project revision in the same transaction. The Shot row is the stable lock
+// target because artifact versions themselves are append-only.
+func (r *Repository) SaveFilmArtifactVersion(artifact *model.FilmArtifact) error {
+	return r.db.Transaction(func(tx *gorm.DB) error {
+		var shot model.Shot
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&shot, "id = ? AND project_id = ?", artifact.ShotID, artifact.ProjectID).Error; err != nil {
+			return err
+		}
+		var latest int
+		if err := tx.Model(&model.FilmArtifact{}).
+			Where("project_id = ? AND shot_id = ? AND artifact_type = ?", artifact.ProjectID, artifact.ShotID, artifact.ArtifactType).
+			Select("COALESCE(MAX(object_version), 0)").Scan(&latest).Error; err != nil {
+			return err
+		}
+		artifact.ObjectVersion = latest + 1
+		if err := tx.Create(artifact).Error; err != nil {
+			return err
+		}
+		result := tx.Model(&model.Project{}).Where("id = ?", artifact.ProjectID).Updates(map[string]any{
+			"revision":   gorm.Expr("revision + 1"),
+			"updated_at": artifact.UpdatedAt,
+		})
+		if result.Error != nil {
+			return result.Error
+		}
+		if result.RowsAffected != 1 {
+			return gorm.ErrRecordNotFound
+		}
+		return nil
+	})
+}
+
+func (r *Repository) ReplaceProjectUnitShots(projectID string, unitID string, shots []model.Shot, artifacts []model.FilmArtifact) error {
 	return r.db.Transaction(func(tx *gorm.DB) error {
 		shotIDs := tx.Model(&model.Shot{}).Select("id").Where("project_id = ? AND unit_id = ?", projectID, unitID)
 		if err := tx.Where("shot_id IN (?)", shotIDs).Delete(&model.ShotAssetReference{}).Error; err != nil {
@@ -1326,11 +1451,19 @@ func (r *Repository) ReplaceProjectUnitShots(projectID string, unitID string, sh
 		if err := tx.Where("project_id = ? AND shot_id IN (?)", projectID, shotIDs).Delete(&model.ProjectAssetCandidate{}).Error; err != nil {
 			return err
 		}
+		if err := tx.Where("project_id = ? AND unit_id = ?", projectID, unitID).Delete(&model.FilmArtifact{}).Error; err != nil {
+			return err
+		}
 		if err := tx.Where("project_id = ? AND unit_id = ?", projectID, unitID).Delete(&model.Shot{}).Error; err != nil {
 			return err
 		}
 		if err := tx.Create(&shots).Error; err != nil {
 			return err
+		}
+		if len(artifacts) > 0 {
+			if err := tx.Create(&artifacts).Error; err != nil {
+				return err
+			}
 		}
 		return tx.Model(&model.Project{}).Where("id = ?", projectID).Updates(map[string]any{"revision": gorm.Expr("revision + 1"), "updated_at": time.Now()}).Error
 	})

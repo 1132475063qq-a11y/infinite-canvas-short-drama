@@ -1,7 +1,7 @@
 import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useRef, useState, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
 import { Segmented, Switch } from "antd";
-import { CircleDot, Clapperboard, Grid2x2, Moon, Palette, PersonStanding, Sun, Square, Info } from "lucide-react";
+import { CircleDot, Clapperboard, Drama, Grid2x2, MapPin, Moon, Package, Palette, PersonStanding, Sparkles, Sun, Square, Info } from "lucide-react";
 
 import { AnimatedThemeToggler } from "@/components/ui/animated-theme-toggler";
 import { FloatingDock } from "@/components/ui/aceternity/floating-dock";
@@ -50,6 +50,10 @@ export function CanvasToolbar({
     onAddFilmScene,
     onAddFilmShot,
     onAddFilmCharacter,
+    onAddFilmLocation,
+    onAddFilmProp,
+    onAddFilmActing,
+    onAddFilmPromptPack,
 }: {
     selectedCount: number;
     workspaceMode: CanvasWorkspaceMode;
@@ -84,6 +88,10 @@ export function CanvasToolbar({
     onAddFilmScene?: () => void;
     onAddFilmShot?: () => void;
     onAddFilmCharacter?: () => void;
+    onAddFilmLocation?: () => void;
+    onAddFilmProp?: () => void;
+    onAddFilmActing?: () => void;
+    onAddFilmPromptPack?: () => void;
 }) {
     const rootRef = useRef<HTMLDivElement>(null);
     const dockRef = useRef<HTMLDivElement>(null);
@@ -189,6 +197,10 @@ export function CanvasToolbar({
         onAddFilmScene ? { id: "film-scene", label: "影视场景", icon: <Clapperboard />, badge: "SC", section: "node", onClick: () => runAddAction(onAddFilmScene) } : null,
         onAddFilmShot ? { id: "film-shot", label: "影视镜头", icon: <CircleDot />, badge: "SH", section: "node", onClick: () => runAddAction(onAddFilmShot) } : null,
         onAddFilmCharacter ? { id: "film-character", label: "角色资产", icon: <PersonStanding />, badge: "CH", section: "node", onClick: () => runAddAction(onAddFilmCharacter) } : null,
+        onAddFilmLocation ? { id: "film-location", label: "场地资产", icon: <MapPin />, badge: "LO", section: "node", onClick: () => runAddAction(onAddFilmLocation) } : null,
+        onAddFilmProp ? { id: "film-prop", label: "道具资产", icon: <Package />, badge: "PR", section: "node", onClick: () => runAddAction(onAddFilmProp) } : null,
+        onAddFilmActing ? { id: "film-acting", label: "表演设计", icon: <Drama />, badge: "AC", section: "node", onClick: () => runAddAction(onAddFilmActing) } : null,
+        onAddFilmPromptPack ? { id: "film-prompt-pack", label: "提示词包", icon: <Sparkles />, badge: "PP", section: "node", onClick: () => runAddAction(onAddFilmPromptPack) } : null,
     ];
     const filmCommands = filmCommandCandidates.filter((command): command is CanvasCreateCommand => command !== null);
     const createCommands = [...filmCommands, ...addNodeCommands.map(toCommand)];

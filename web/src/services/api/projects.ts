@@ -57,7 +57,17 @@ export type ProjectAsset = {
     versionCount: number;
     usages: string[];
     updatedAt: string;
+    currentVersion?: ProjectAssetVersionSummary;
     character?: CharacterCardSummary;
+};
+
+export type ProjectAssetVersionSummary = {
+	id: string;
+	version: number;
+	status: string;
+	definition: Record<string, unknown>;
+	note: string;
+	updatedAt: string;
 };
 
 export type CharacterRepresentation = {
@@ -118,6 +128,8 @@ export type ProjectShot = {
     position: number;
     durationMs: number;
     status: string;
+    contractArtifactId?: string;
+    contractVersion?: number;
     createdAt: string;
     updatedAt: string;
 };
@@ -129,10 +141,30 @@ export type ProjectScene = {
     code: string;
     title: string;
     description: string;
+    interiorExterior?: "interior" | "exterior" | "mixed" | "" | string;
+    timeOfDay?: "day" | "night" | "dawn" | "dusk" | "continuous" | "" | string;
+    locationAssetId?: string;
     position: number;
     status: string;
     createdAt: string;
     updatedAt: string;
+};
+
+export type FilmArtifact = {
+	id: string;
+	projectId: string;
+	unitId?: string;
+	sceneId?: string;
+	shotId?: string;
+	artifactType: string;
+	objectVersion: number;
+	status: string;
+	responsibleAgentId?: string;
+	payloadJson: string;
+	sourceRefsJson: string;
+	authorityRefsJson: string;
+	createdAt: string;
+	updatedAt: string;
 };
 
 export type ShotAssetReference = {
@@ -177,6 +209,7 @@ export type ProjectDetail = {
     workflows: ProjectWorkflow[];
     scenes: ProjectScene[];
     shots: ProjectShot[];
+    filmArtifacts?: FilmArtifact[];
     shotReferences: ShotAssetReference[];
     assetCandidates: ProjectAssetCandidate[];
 };
@@ -250,8 +283,8 @@ export function updateProjectAssetCategory(projectId: string, assetId: string, c
     return request<{ asset: ProjectAsset }>(api.patch(`/projects/${encodeURIComponent(projectId)}/assets/${encodeURIComponent(assetId)}`, { category }));
 }
 
-export function createProjectAssetVersion(projectId: string, assetId: string, input: { prompt?: string; definitionJson?: string; note?: string }) {
-    return request<{ version: { id: string; assetId: string; version: number; status: string } }>(api.post(`/projects/${encodeURIComponent(projectId)}/assets/${encodeURIComponent(assetId)}/versions`, input));
+export function createProjectAssetVersion(projectId: string, assetId: string, input: { title?: string; prompt?: string; definitionJson?: string; note?: string }) {
+	return request<{ version: { id: string; assetId: string; version: number; status: string; definitionJson: string; note: string } }>(api.post(`/projects/${encodeURIComponent(projectId)}/assets/${encodeURIComponent(assetId)}/versions`, input));
 }
 
 export function listVoiceProfiles() {
@@ -286,11 +319,15 @@ export function createUnitWorkflow(projectId: string, unitId: string) {
     return request<{ workflow: ProjectWorkflow }>(api.post(`/projects/${encodeURIComponent(projectId)}/workflows`, { unitId }));
 }
 
-export function saveProjectShot(projectId: string, input: { id?: string; unitId?: string; sceneId?: string; title: string; description?: string; position?: number; durationMs?: number; status?: string }) {
+export function saveProjectShot(projectId: string, input: { id?: string; unitId?: string; sceneId?: string; title: string; description?: string; position?: number; durationMs?: number; status?: string; contract?: Record<string, unknown> }) {
     return request<{ shot: ProjectShot }>(api.post(`/projects/${encodeURIComponent(projectId)}/shots`, input));
 }
 
-export function saveProjectScene(projectId: string, input: { id?: string; unitId?: string; code?: string; title: string; description?: string; position?: number; status?: string }) {
+export function saveProjectFilmArtifact(projectId: string, input: { shotId: string; artifactType: "acting" | "video_prompt_pack"; status?: string; responsibleAgentId?: string; payload: Record<string, unknown> }) {
+    return request<{ artifact: FilmArtifact }>(api.post(`/projects/${encodeURIComponent(projectId)}/film-artifacts`, input));
+}
+
+export function saveProjectScene(projectId: string, input: { id?: string; unitId?: string; code?: string; title: string; description?: string; interiorExterior?: string; timeOfDay?: string; locationAssetId?: string; position?: number; status?: string }) {
     return request<{ scene: ProjectScene }>(api.post(`/projects/${encodeURIComponent(projectId)}/scenes`, input));
 }
 

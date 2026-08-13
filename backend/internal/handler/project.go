@@ -557,6 +557,25 @@ func RegisterProjectRoutes(r *gin.RouterGroup, svc *service.Service) {
 		}
 		ok(c, gin.H{"shot": shot})
 	})
+	r.POST("/projects/:id/film-artifacts", func(c *gin.Context) {
+		user, err := currentUser(c, svc)
+		if err != nil {
+			failService(c, err)
+			return
+		}
+		c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 512<<10)
+		var req service.SaveProjectFilmArtifactRequest
+		if err := c.ShouldBindJSON(&req); err != nil {
+			fail(c, http.StatusBadRequest, err)
+			return
+		}
+		artifact, err := svc.SaveProjectFilmArtifact(user.ID, c.Param("id"), req)
+		if err != nil {
+			failService(c, err)
+			return
+		}
+		ok(c, gin.H{"artifact": artifact})
+	})
 	r.POST("/projects/:id/scenes", func(c *gin.Context) {
 		user, err := currentUser(c, svc)
 		if err != nil {

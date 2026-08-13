@@ -27,6 +27,32 @@ func TestDeleteProjectRemovesScenesInTransaction(t *testing.T) {
 	assertSceneCount(t, db, "project_id = ?", []any{project.ID}, 0)
 }
 
+func TestDeleteProjectRemovesFilmArtifactsInTransaction(t *testing.T) {
+	repo, db := newProjectDeletionRepository(t)
+	project := model.Project{ID: "project-artifact-delete", UserID: "user-1", Name: "合同删除项目"}
+	shot := model.Shot{ID: "shot-artifact-delete", ProjectID: project.ID, Title: "SC01-SH001"}
+	artifact := model.FilmArtifact{ID: "artifact-delete", ProjectID: project.ID, ShotID: shot.ID, ArtifactType: "shot_contract", ObjectVersion: 1}
+	if err := db.Create(&project).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Create(&shot).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Create(&artifact).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.DeleteProject(project.UserID, project.ID); err != nil {
+		t.Fatal(err)
+	}
+	var count int64
+	if err := db.Model(&model.FilmArtifact{}).Where("project_id = ?", project.ID).Count(&count).Error; err != nil {
+		t.Fatal(err)
+	}
+	if count != 0 {
+		t.Fatalf("expected project film artifacts deleted, got %d", count)
+	}
+}
+
 func TestDeleteProjectUnitRemovesOnlyUnitScenes(t *testing.T) {
 	repo, db := newProjectDeletionRepository(t)
 	project := model.Project{ID: "project-unit-delete", UserID: "user-1", Name: "章节删除项目"}
@@ -64,6 +90,7 @@ func newProjectDeletionRepository(t *testing.T) (*Repository, *gorm.DB) {
 		&model.CanvasUnitLink{},
 		&model.Scene{},
 		&model.Shot{},
+		&model.FilmArtifact{},
 		&model.ShotAssetReference{},
 		&model.WorkflowInstance{},
 		&model.WorkflowStepInstance{},

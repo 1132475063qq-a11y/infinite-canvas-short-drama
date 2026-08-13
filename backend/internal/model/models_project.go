@@ -164,30 +164,54 @@ type CanvasUnitLink struct {
 
 // Scene 是影视生产语义中的场次事实；Canvas 节点仅通过 SceneID 投影它。
 type Scene struct {
-	ID          string    `json:"id" gorm:"primaryKey;size:36"`
-	ProjectID   string    `json:"projectId" gorm:"index;size:36"`
-	UnitID      string    `json:"unitId,omitempty" gorm:"index;size:36"`
-	Code        string    `json:"code" gorm:"size:64"`
-	Title       string    `json:"title" gorm:"size:240"`
-	Description string    `json:"description" gorm:"type:text"`
-	Position    int       `json:"position"`
-	Status      string    `json:"status" gorm:"index;size:24"`
-	CreatedAt   time.Time `json:"createdAt"`
-	UpdatedAt   time.Time `json:"updatedAt"`
+	ID               string    `json:"id" gorm:"primaryKey;size:36"`
+	ProjectID        string    `json:"projectId" gorm:"index;size:36"`
+	UnitID           string    `json:"unitId,omitempty" gorm:"index;size:36"`
+	Code             string    `json:"code" gorm:"size:64"`
+	Title            string    `json:"title" gorm:"size:240"`
+	Description      string    `json:"description" gorm:"type:text"`
+	InteriorExterior string    `json:"interiorExterior" gorm:"size:16"`
+	TimeOfDay        string    `json:"timeOfDay" gorm:"size:32"`
+	LocationAssetID  string    `json:"locationAssetId,omitempty" gorm:"index;size:36"`
+	Position         int       `json:"position"`
+	Status           string    `json:"status" gorm:"index;size:24"`
+	CreatedAt        time.Time `json:"createdAt"`
+	UpdatedAt        time.Time `json:"updatedAt"`
 }
 
 type Shot struct {
-	ID          string    `json:"id" gorm:"primaryKey;size:36"`
-	ProjectID   string    `json:"projectId" gorm:"index;size:36"`
-	UnitID      string    `json:"unitId" gorm:"index;size:36"`
-	SceneID     string    `json:"sceneId,omitempty" gorm:"index;size:36"`
-	Title       string    `json:"title" gorm:"size:240"`
-	Description string    `json:"description" gorm:"type:text"`
-	Position    int       `json:"position"`
-	DurationMs  int64     `json:"durationMs"`
-	Status      string    `json:"status" gorm:"index;size:24"`
-	CreatedAt   time.Time `json:"createdAt"`
-	UpdatedAt   time.Time `json:"updatedAt"`
+	ID                 string    `json:"id" gorm:"primaryKey;size:36"`
+	ProjectID          string    `json:"projectId" gorm:"index;size:36"`
+	UnitID             string    `json:"unitId" gorm:"index;size:36"`
+	SceneID            string    `json:"sceneId,omitempty" gorm:"index;size:36"`
+	Title              string    `json:"title" gorm:"size:240"`
+	Description        string    `json:"description" gorm:"type:text"`
+	Position           int       `json:"position"`
+	DurationMs         int64     `json:"durationMs"`
+	Status             string    `json:"status" gorm:"index;size:24"`
+	ContractArtifactID string    `json:"contractArtifactId,omitempty" gorm:"index;size:36"`
+	ContractVersion    int       `json:"contractVersion"`
+	CreatedAt          time.Time `json:"createdAt"`
+	UpdatedAt          time.Time `json:"updatedAt"`
+}
+
+// FilmArtifact 保存可版本化的影视生产事实。Canvas 仅持有当前 Artifact 的 DomainRef，
+// Agent、Inspector 与后续 QC 共用同一事实源，避免节点 payload 演变成第二套数据库。
+type FilmArtifact struct {
+	ID                 string    `json:"id" gorm:"primaryKey;size:36"`
+	ProjectID          string    `json:"projectId" gorm:"index;size:36;uniqueIndex:idx_film_artifact_version,priority:1"`
+	UnitID             string    `json:"unitId,omitempty" gorm:"index;size:36"`
+	SceneID            string    `json:"sceneId,omitempty" gorm:"index;size:36"`
+	ShotID             string    `json:"shotId,omitempty" gorm:"index;size:36;uniqueIndex:idx_film_artifact_version,priority:2"`
+	ArtifactType       string    `json:"artifactType" gorm:"index;size:64;uniqueIndex:idx_film_artifact_version,priority:3"`
+	ObjectVersion      int       `json:"objectVersion" gorm:"uniqueIndex:idx_film_artifact_version,priority:4"`
+	Status             string    `json:"status" gorm:"index;size:24"`
+	ResponsibleAgentID string    `json:"responsibleAgentId,omitempty" gorm:"index;size:80"`
+	PayloadJSON        string    `json:"payloadJson" gorm:"type:text"`
+	SourceRefsJSON     string    `json:"sourceRefsJson" gorm:"type:text"`
+	AuthorityRefsJSON  string    `json:"authorityRefsJson" gorm:"type:text"`
+	CreatedAt          time.Time `json:"createdAt"`
+	UpdatedAt          time.Time `json:"updatedAt"`
 }
 
 type ShotAssetReference struct {

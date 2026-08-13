@@ -4,6 +4,7 @@ import { migrateCanvasProjectDocument } from "../src/film/domain/document-migrat
 import { describeFilmConnection, validateFilmConnection } from "../src/film/domain/edge-contract";
 import { moveFilmNodeProjection } from "../src/film/domain/node-positioning";
 import { isFilmProductionProjection } from "../src/film/domain/node-projection";
+import { resolveFilmNode } from "../src/film/domain/film-node-resolver";
 import { FILM_NODE_PORT_SCHEMAS, areFilmPortSchemasCompatible, findFilmPortSchema, missingRequiredFilmInputPorts } from "../src/film/domain/port-schema";
 import { formatFilmSceneTitle, hasFilmSceneProjection, normalizeFilmSceneTitle } from "../src/film/domain/scene-projection";
 import { FILM_NODE_KINDS } from "../src/film/domain/types";
@@ -123,6 +124,19 @@ describe("Film layout", () => {
         expect(positioned.find((node) => node.id === "manual-character")?.position).toEqual({ x: 101, y: 101 });
     });
 
+    test("Shot 生产链按 Shot、Acting、Prompt Pack 横向排列", () => {
+        const scene = { ...filmNode("scene-01", "scene", { x: 13, y: 21 }), domainRef: { projectId: "project-01", sceneId: "scene-01" }, layout: { mode: "auto" as const, order: 1 } };
+        const shot = { ...filmNode("shot-001", "shot"), domainRef: { projectId: "project-01", sceneId: "scene-01", shotId: "shot-001" }, layout: { mode: "auto" as const, order: 1 } };
+        const acting = { ...filmNode("acting-001", "acting"), width: 300, height: 180, domainRef: { projectId: "project-01", sceneId: "scene-01", shotId: "shot-001" }, layout: { mode: "auto" as const, order: 1 } };
+        const prompt = { ...filmNode("prompt-001", "prompt_pack"), width: 340, height: 180, domainRef: { projectId: "project-01", sceneId: "scene-01", shotId: "shot-001" }, layout: { mode: "auto" as const, order: 2 } };
+
+        const positioned = applyFilmAutoLayout([scene, shot, acting, prompt]);
+
+        expect(positioned.find((node) => node.id === "shot-001")?.position).toEqual({ x: 64, y: 312 });
+        expect(positioned.find((node) => node.id === "acting-001")?.position).toEqual({ x: 528, y: 312 });
+        expect(positioned.find((node) => node.id === "prompt-001")?.position).toEqual({ x: 880, y: 312 });
+    });
+
     test("旧镜头画布会补上所属场景投影，但不会重建生产对象", () => {
         const shot = {
             ...filmNode("shot-001", "shot", { x: 400, y: 600 }),
@@ -164,6 +178,32 @@ describe("Film layout", () => {
 });
 
 describe("Film semantic contracts", () => {
+    test("影视节点解析器始终读取 Shot 当前合同版本", () => {
+        const shotNode = { ...filmNode("shot-node", "shot"), domainRef: { projectId: "project-01", sceneId: "scene-01", shotId: "shot-01", artifactId: "contract-v2" } };
+        const project = {
+            project: { id: "project-01", userId: "user-01", name: "寄生广告", type: "short_drama", aspectRatio: "9:16", sourceType: "script", description: "", stylePresetId: "", status: "active", revision: 1, createdAt: "2026-08-12T00:00:00Z", updatedAt: "2026-08-12T00:00:00Z" },
+            units: [], canvases: [], canvasUnitLinks: [], workflows: [], assets: [], assetCandidates: [], shotReferences: [],
+            scenes: [{ id: "scene-01", projectId: "project-01", code: "SC01", title: "诊所", description: "", position: 0, status: "draft", createdAt: "2026-08-12T00:00:00Z", updatedAt: "2026-08-12T00:00:00Z" }],
+            shots: [{ id: "shot-01", projectId: "project-01", sceneId: "scene-01", title: "SC01-SH001", description: "", position: 0, durationMs: 4200, status: "ready", contractArtifactId: "contract-v2", contractVersion: 2, createdAt: "2026-08-12T00:00:00Z", updatedAt: "2026-08-12T00:00:00Z" }],
+            filmArtifacts: [
+                { id: "contract-v1", projectId: "project-01", sceneId: "scene-01", shotId: "shot-01", artifactType: "shot_contract", objectVersion: 1, status: "draft", payloadJson: JSON.stringify({ shotSize: "MS" }), sourceRefsJson: "[]", authorityRefsJson: "[]", createdAt: "2026-08-12T00:00:00Z", updatedAt: "2026-08-12T00:00:00Z" },
+                { id: "contract-v2", projectId: "project-01", sceneId: "scene-01", shotId: "shot-01", artifactType: "shot_contract", objectVersion: 2, status: "ready", payloadJson: JSON.stringify({ shotSize: "MCU" }), sourceRefsJson: "[]", authorityRefsJson: "[]", createdAt: "2026-08-12T00:01:00Z", updatedAt: "2026-08-12T00:01:00Z" },
+                { id: "acting-v1", projectId: "project-01", sceneId: "scene-01", shotId: "shot-01", artifactType: "acting", objectVersion: 1, status: "draft", payloadJson: JSON.stringify({ objective: "conceal" }), sourceRefsJson: "[]", authorityRefsJson: "[]", createdAt: "2026-08-12T00:02:00Z", updatedAt: "2026-08-12T00:02:00Z" },
+                { id: "acting-v2", projectId: "project-01", sceneId: "scene-01", shotId: "shot-01", artifactType: "acting", objectVersion: 2, status: "ready", payloadJson: JSON.stringify({ objective: "redirect" }), sourceRefsJson: "[]", authorityRefsJson: "[]", createdAt: "2026-08-12T00:03:00Z", updatedAt: "2026-08-12T00:03:00Z" },
+            ],
+        };
+
+        const resolved = resolveFilmNode(shotNode, project);
+        expect(resolved.artifact?.id).toBe("contract-v2");
+        expect(resolved.contract.shotSize).toBe("MCU");
+        expect(resolved.scene?.title).toBe("诊所");
+
+        const actingNode = { ...filmNode("acting-node", "acting"), domainRef: { projectId: "project-01", sceneId: "scene-01", shotId: "shot-01", artifactId: "acting-v1" } };
+        const actingResolved = resolveFilmNode(actingNode, project);
+        expect(actingResolved.artifact?.id).toBe("acting-v2");
+        expect(actingResolved.contract.objective).toBe("redirect");
+    });
+
     test("FilmNodeKind v2 与每种节点的端口合同完整冻结", () => {
         // 规划枚举示例漏了 Phase 4 明确要求的 acting；保留现有 acting 并补齐细分类型。
         expect(FILM_NODE_KINDS).toHaveLength(26);

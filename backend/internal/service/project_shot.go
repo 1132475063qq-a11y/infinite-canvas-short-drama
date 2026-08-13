@@ -9,24 +9,28 @@ import (
 )
 
 type CreateProjectShotRequest struct {
-	ID          string `json:"id"`
-	UnitID      string `json:"unitId"`
-	SceneID     string `json:"sceneId"`
-	Title       string `json:"title"`
-	Description string `json:"description"`
-	Position    int    `json:"position"`
-	DurationMs  int64  `json:"durationMs"`
-	Status      string `json:"status"`
+	ID          string         `json:"id"`
+	UnitID      string         `json:"unitId"`
+	SceneID     string         `json:"sceneId"`
+	Title       string         `json:"title"`
+	Description string         `json:"description"`
+	Position    int            `json:"position"`
+	DurationMs  int64          `json:"durationMs"`
+	Status      string         `json:"status"`
+	Contract    map[string]any `json:"contract"`
 }
 
 type SaveProjectSceneRequest struct {
-	ID          string `json:"id"`
-	UnitID      string `json:"unitId"`
-	Code        string `json:"code"`
-	Title       string `json:"title"`
-	Description string `json:"description"`
-	Position    int    `json:"position"`
-	Status      string `json:"status"`
+	ID               string  `json:"id"`
+	UnitID           string  `json:"unitId"`
+	Code             string  `json:"code"`
+	Title            string  `json:"title"`
+	Description      string  `json:"description"`
+	InteriorExterior *string `json:"interiorExterior"`
+	TimeOfDay        *string `json:"timeOfDay"`
+	LocationAssetID  *string `json:"locationAssetId"`
+	Position         int     `json:"position"`
+	Status           string  `json:"status"`
 }
 
 func (s *Service) SaveProjectScene(userID string, projectID string, req SaveProjectSceneRequest) (model.Scene, error) {
@@ -69,24 +73,54 @@ func (s *Service) SaveProjectScene(userID string, projectID string, req SaveProj
 		if unitID == "" {
 			unitID = existing.UnitID
 		}
+		if req.InteriorExterior == nil {
+			req.InteriorExterior = &existing.InteriorExterior
+		}
+		if req.TimeOfDay == nil {
+			req.TimeOfDay = &existing.TimeOfDay
+		}
+		if req.LocationAssetID == nil {
+			req.LocationAssetID = &existing.LocationAssetID
+		}
 		now = existing.CreatedAt
 	}
 
 	if status != "draft" && status != "ready" && status != "completed" {
 		return model.Scene{}, BadAuthRequest("不支持的场景状态")
 	}
+	interiorExterior := normalizedOptionalString(req.InteriorExterior)
+	if interiorExterior != "" && interiorExterior != "interior" && interiorExterior != "exterior" && interiorExterior != "mixed" {
+		return model.Scene{}, BadAuthRequest("不支持的内外景类型")
+	}
+	timeOfDay := normalizedOptionalString(req.TimeOfDay)
+	if timeOfDay != "" && timeOfDay != "day" && timeOfDay != "night" && timeOfDay != "dawn" && timeOfDay != "dusk" && timeOfDay != "continuous" {
+		return model.Scene{}, BadAuthRequest("不支持的场景时间")
+	}
+	locationAssetID := trimmedOptionalString(req.LocationAssetID)
+	if locationAssetID != "" {
+		asset, err := s.repo.ProjectAssetForProject(projectID, locationAssetID)
+		if err != nil {
+			return model.Scene{}, err
+		}
+		if asset.Category != model.AssetCategoryEnvironment {
+			return model.Scene{}, BadAuthRequest("场景只能绑定场地资产")
+		}
+	}
 
 	scene := model.Scene{
-		ID:          sceneID,
-		ProjectID:   projectID,
-		UnitID:      unitID,
-		Code:        strings.TrimSpace(req.Code),
-		Title:       title,
-		Description: strings.TrimSpace(req.Description),
-		Position:    req.Position,
-		Status:      status,
-		CreatedAt:   now,
-		UpdatedAt:   time.Now(),
+		ID:               sceneID,
+		ProjectID:        projectID,
+		UnitID:           unitID,
+		Code:             strings.TrimSpace(req.Code),
+		Title:            title,
+		Description:      strings.TrimSpace(req.Description),
+		InteriorExterior: interiorExterior,
+		TimeOfDay:        timeOfDay,
+		LocationAssetID:  locationAssetID,
+		Position:         req.Position,
+		Status:           status,
+		CreatedAt:        now,
+		UpdatedAt:        time.Now(),
 	}
 	if err := s.repo.SaveScene(&scene, create); err != nil {
 		return model.Scene{}, err
@@ -95,6 +129,20 @@ func (s *Service) SaveProjectScene(userID string, projectID string, req SaveProj
 		return model.Scene{}, err
 	}
 	return scene, nil
+}
+
+func normalizedOptionalString(value *string) string {
+	if value == nil {
+		return ""
+	}
+	return strings.ToLower(strings.TrimSpace(*value))
+}
+
+func trimmedOptionalString(value *string) string {
+	if value == nil {
+		return ""
+	}
+	return strings.TrimSpace(*value)
 }
 
 type ReplaceProjectUnitShotsRequest struct {
@@ -162,6 +210,9 @@ func (s *Service) CreateProjectShot(userID string, projectID string, req CreateP
 		if status == "" {
 			status = existing.Status
 		}
+		if unitID == "" {
+			unitID = existing.UnitID
+		}
 		if sceneID == "" {
 			sceneID = existing.SceneID
 		}
@@ -171,13 +222,41 @@ func (s *Service) CreateProjectShot(userID string, projectID string, req CreateP
 		return model.Shot{}, BadAuthRequest("不支持的镜头状态")
 	}
 	shot := model.Shot{ID: shotID, ProjectID: projectID, UnitID: unitID, SceneID: sceneID, Title: title, Description: strings.TrimSpace(req.Description), Position: req.Position, DurationMs: req.DurationMs, Status: status, CreatedAt: now, UpdatedAt: time.Now()}
-	if err := s.repo.SaveShot(&shot, create); err != nil {
+	var contract *model.FilmArtifact
+	if create || req.Contract != nil {
+		payload := req.Contract
+		if payload == nil {
+			payload = defaultShotContract(title, req.DurationMs)
+		}
+		payloadJSON, err := json.Marshal(payload)
+		if err != nil {
+			return model.Shot{}, BadAuthRequest("Shot Contract 格式无效")
+		}
+		contract = &model.FilmArtifact{ID: newID(), ProjectID: projectID, UnitID: unitID, SceneID: sceneID, ShotID: shotID, ArtifactType: "shot_contract", Status: status, PayloadJSON: string(payloadJSON), SourceRefsJSON: "[]", AuthorityRefsJSON: "[]", CreatedAt: time.Now(), UpdatedAt: time.Now()}
+	}
+	if err := s.repo.SaveShotWithContract(&shot, create, contract); err != nil {
 		return model.Shot{}, err
 	}
 	if err := s.repo.BumpProjectRevision(projectID); err != nil {
 		return model.Shot{}, err
 	}
 	return shot, nil
+}
+
+func defaultShotContract(title string, durationMs int64) map[string]any {
+	return map[string]any{
+		"shotCode":        title,
+		"shotSize":        "",
+		"script":          "",
+		"narrativeIntent": "",
+		"blocking":        "",
+		"acting":          "",
+		"camera":          "",
+		"lens":            "",
+		"movement":        "",
+		"continuity":      "",
+		"durationMs":      durationMs,
+	}
 }
 
 func (s *Service) ReplaceProjectUnitShots(userID string, projectID string, unitID string, req ReplaceProjectUnitShotsRequest) ([]model.Shot, error) {
@@ -193,16 +272,24 @@ func (s *Service) ReplaceProjectUnitShots(userID string, projectID string, unitI
 	}
 	now := time.Now()
 	shots := make([]model.Shot, 0, len(req.Shots))
+	artifacts := make([]model.FilmArtifact, 0, len(req.Shots))
 	for position, input := range req.Shots {
 		title := strings.TrimSpace(input.Title)
 		description := strings.TrimSpace(input.Description)
 		if title == "" || description == "" || input.DurationMs < 0 {
 			return nil, BadAuthRequest("分镜标题、描述或时长无效")
 		}
-		shots = append(shots, model.Shot{ID: newID(), ProjectID: projectID, UnitID: unitID, Title: title, Description: description, Position: position, DurationMs: input.DurationMs, Status: "draft", CreatedAt: now, UpdatedAt: now})
+		shotID := newID()
+		artifactID := newID()
+		payload, err := json.Marshal(defaultShotContract(title, input.DurationMs))
+		if err != nil {
+			return nil, err
+		}
+		shots = append(shots, model.Shot{ID: shotID, ProjectID: projectID, UnitID: unitID, Title: title, Description: description, Position: position, DurationMs: input.DurationMs, Status: "draft", ContractArtifactID: artifactID, ContractVersion: 1, CreatedAt: now, UpdatedAt: now})
+		artifacts = append(artifacts, model.FilmArtifact{ID: artifactID, ProjectID: projectID, UnitID: unitID, ShotID: shotID, ArtifactType: "shot_contract", ObjectVersion: 1, Status: "draft", PayloadJSON: string(payload), SourceRefsJSON: "[]", AuthorityRefsJSON: "[]", CreatedAt: now, UpdatedAt: now})
 	}
 	// 章节级重生成是一个整体写操作，旧镜头与引用必须和新镜头在同一事务中替换。
-	if err := s.repo.ReplaceProjectUnitShots(projectID, unitID, shots); err != nil {
+	if err := s.repo.ReplaceProjectUnitShots(projectID, unitID, shots, artifacts); err != nil {
 		return nil, err
 	}
 	return shots, nil

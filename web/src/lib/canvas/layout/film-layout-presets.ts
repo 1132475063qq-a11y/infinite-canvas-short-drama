@@ -8,6 +8,8 @@ export const FILM_SCENE_LANE = {
     shotOffsetY: 288,
     shotGap: 32,
     shotHeight: 180,
+    pipelineGap: 48,
+    actingWidth: 300,
 } as const;
 
 type SceneLane = {
@@ -56,7 +58,30 @@ export function layoutFilmSceneLanes(nodes: CanvasNodeData[], origin: Position =
         });
     });
 
+    // The per-shot production chain grows horizontally so the scene and shot
+    // ordering remain readable: Shot -> Acting -> Prompt Pack. Only auto nodes
+    // participate; manual and pinned projections preserve the user's layout.
+    nodes.filter((node) => node.filmKind === "shot").forEach((shot) => {
+        const shotPosition = positions.get(shot.id) || shot.position;
+        const actingNodes = pipelineNodes(nodes, shot, "acting");
+        const promptNodes = pipelineNodes(nodes, shot, "prompt_pack");
+        actingNodes.forEach((node, index) => positions.set(node.id, {
+            x: shotPosition.x + shot.width + FILM_SCENE_LANE.pipelineGap,
+            y: shotPosition.y + index * (node.height + FILM_SCENE_LANE.shotGap),
+        }));
+        promptNodes.forEach((node, index) => positions.set(node.id, {
+            x: shotPosition.x + shot.width + FILM_SCENE_LANE.pipelineGap + FILM_SCENE_LANE.actingWidth + FILM_SCENE_LANE.pipelineGap,
+            y: shotPosition.y + index * (node.height + FILM_SCENE_LANE.shotGap),
+        }));
+    });
+
     return positions;
+}
+
+function pipelineNodes(nodes: CanvasNodeData[], shot: CanvasNodeData, kind: "acting" | "prompt_pack") {
+    return nodes
+        .filter((node) => node.filmKind === kind && node.layout?.mode === "auto" && node.domainRef?.shotId === shot.domainRef?.shotId)
+        .sort(compareFilmLayoutOrder);
 }
 
 function compareFilmLayoutOrder(first: CanvasNodeData, second: CanvasNodeData) {

@@ -1,6 +1,6 @@
 # AI 短剧生产无限画布：继续开发入口
 
-更新时间：2026-08-12
+更新时间：2026-08-13
 
 ## 1. 先从这里开始
 
@@ -16,7 +16,7 @@ git log -8 --oneline
 预期分支：
 
 ```text
-codex/phase3-production-ui-shell
+codex/phase4-film-nodes
 ```
 
 主规划文档：
@@ -130,6 +130,36 @@ web/src/pages/canvas/canvas-project-top-bar.tsx
 web/test/production-ui-shell.test.ts
 ```
 
+### Phase 4：影视生产节点（第一批进行中）
+
+已完成本批：
+
+- Scene 增加内外景、时间与场地资产绑定。
+- Shot 使用独立 `FilmArtifact` 保存不可变 Shot Contract 版本；Shot 只持有当前版本指针。
+- 历史 Shot 首次读取时安全补齐 Shot Contract v1，新旧画布共用同一事实源。
+- Character、Location、Prop 节点读取当前 AssetVersion 定义；Location/Prop 的 Inspector 保存会新增资产版本。
+- Shot、Character、Location、Prop 使用领域专用节点卡；工具栏加入场地和道具入口。
+- Inspector 已接通 Scene/Shot/Character/Location/Prop 的真实保存 API。
+- 新增通用、不可变版本的 `FilmArtifact` 事实源，以及按 Shot + ArtifactType 查询当前版本的解析规则。
+- 新增 Acting 节点：只负责 objective、obstacle、tactic、beat、performance、continuity locks；服务端拒绝外貌、体型、服装、声音、机位、焦段等越权字段。
+- 新增 Video Prompt Pack 节点：保存场景上下文、参考、空间摄影、时间轴、声音表演、锁与最终编译提示词。
+- Acting 与 Prompt Pack 每次保存都会创建新的后端 Artifact 版本并递增 Project revision；Canvas 只保存 DomainRef 投影。
+- 新增 Shot → Acting、Shot → Prompt Pack、Acting → Prompt Pack 的 typed connection；自动布局按 Shot、Acting、Prompt Pack 横向排列。
+- Inspector、领域卡片、节点菜单、刷新恢复和最新版本解析已全部接通。
+
+尚未完成：Generation、Result、QC、Retry 等后续节点，以及《寄生广告》数据库 Golden Project。
+
+核心文件：
+
+```text
+backend/internal/model/models_project.go
+backend/internal/service/project_shot.go
+backend/internal/repository/repository.go
+web/src/film/domain/film-node-resolver.ts
+web/src/film/nodes/film-node-card.tsx
+web/src/film/inspector/film-inspector.tsx
+```
+
 最近五个本地阶段提交：
 
 ```text
@@ -169,6 +199,25 @@ Phase 3 验证（2026-08-12）：
 - 当前机器的 `localhost:3000` 被 `/Users/xiangyuqin/Desktop/Infinite-Canvas-main` 占用，本阶段用 `http://localhost:3001` 验收当前仓库；不要把 3000 的旧页面误当成本分支。
 - 本阶段页面没有新增运行错误；控制台只观察到已有 Ant Design Modal deprecated warning。
 
+Phase 4 第一批验证（2026-08-12）：
+
+- 后端 repository/service 自动测试：通过。
+- Web 自动测试：79/79 通过；typecheck、production build、`git diff --check` 通过。
+- 浏览器实测：历史空数组项目可正常打开；Shot Card 显示真实 Shot Contract、时长、景别与状态。
+- Inspector 实测：Shot Contract v1 历史补齐成功；编辑保存生成 v2/v3，刷新后仍从后端版本读取。
+- 新增节点菜单可见：影视场景、影视镜头、角色资产、场地资产、道具资产。
+
+Phase 4 Acting / Prompt Pack 验证（2026-08-13）：
+
+- 后端 repository/service/handler 自动测试：通过。
+- Web 自动测试：88/88 通过；TypeScript typecheck、production build、`git diff --check` 通过。
+- 浏览器真实创建：选中 Shot 后可创建 Acting v1，再保存 objective、obstacle、tactic、beat 为 v2。
+- 浏览器真实创建：从 Acting 创建 Prompt Pack v1，保存场景上下文、格式、风格和 compiled prompt 为 v2。
+- 刷新后节点总数、Acting v2、Prompt Pack v2 和字段内容均从后端/Canvas 投影正确恢复；搜索可定位远端节点。
+- 数据库核对：Shot → Acting、Shot → Prompt Pack、Acting → Prompt Pack 三条连接均持久化；横向坐标顺序为 Shot、Acting、Prompt Pack。
+- 最终新浏览器会话无 console error/warning；本阶段同时修复表单受控状态和两个 Ant Design Modal 弃用属性。
+- 当前仓库继续使用 `http://localhost:3001` 验收，避免与 3000 端口的其他 checkout 混淆。
+
 常用验证命令：
 
 ```bash
@@ -202,7 +251,7 @@ LOCAL_UID=$(id -u) LOCAL_GID=$(id -g) docker compose -f docker-compose.dev.yml u
 
 当前尚没有正式独立模型：
 
-- Artifact / ArtifactVersion
+- 通用 Agent Artifact / ArtifactVersion（影视节点当前使用的是已落库的 `FilmArtifact` 不可变版本行）
 - GenerationAttempt / ProviderJob
 - QCReport
 - ChangeRequest
@@ -222,15 +271,15 @@ Phase 5 = Provider Gateway v2
 
 Phase 3 已通过自动与浏览器验收，下一会话不要重做 UI Shell。Phase 0 仍需另补数据库 schema 快照和恢复说明。
 
-### Phase 4：Film Nodes
+### Phase 4：Film Nodes 下一批
 
 下一阶段实现：
 
-- 先做 Scene、Shot、Character、Location、Prop 的实体节点升级。
-- Shot Contract 补齐规划定义的生产字段，并由后端对象驱动。
-- Character / Location / Prop 使用 Asset + AssetVersion，不把画布 metadata 当事实源。
-- Inspector 已有 Tab Shell；本阶段只接入对应对象的真实编辑与版本信息。
-- 不提前实现 Phase 5 Provider Gateway，也不提前实现 Phase 6 Agent Runtime。
+- 在现有 Shot → Acting → Prompt Pack 后接入 GenerationRequest / Generation 节点事实模型。
+- 先冻结请求、任务、尝试、结果的领域边界和状态机；Canvas 仍只做 Projection。
+- API Key 继续只存在后端 Secret/渠道配置层，任何 Generation 节点都不得保存密钥。
+- 完成 Generation 与 Prompt Pack 的 typed port、Inspector、版本/状态显示和基础布局。
+- 本批只建立 Provider Gateway 边界与可测试的任务合同；不要同时接入多家 Provider，也不提前实现 Agent Runtime。
 
 优先复用并增量升级：
 
@@ -266,5 +315,6 @@ Phase 3 已通过自动与浏览器验收，下一会话不要重做 UI Shell。
 /Users/xiangyuqin/Downloads/短剧AI无限画布_Production_Canvas_v2_超详细发展规划.md。
 检查当前分支、Git 状态和最近提交，不要重做 Phase 1/Phase 2。
 Phase 3 已完成并通过 78/78 自动测试与三档浏览器验收，不要重做。
-下一步只进入 Phase 4 Film Nodes，先完成 Scene、Shot、Character、Location、Prop 的事实源与字段差距审计，再编码；不要提前进入 Provider Gateway。
+Phase 4 已完成 Scene、Shot、Character、Location、Prop、Acting、Prompt Pack 的事实源投影。
+下一步继续 Phase 4 的 GenerationRequest / Generation 节点与 Provider Gateway 边界审计；先冻结数据合同、状态机和安全边界，再编码，不要提前接入多家 Provider 或 Agent Runtime。
 ```

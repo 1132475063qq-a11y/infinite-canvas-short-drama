@@ -27,6 +27,7 @@ import { FilmInspector } from "@/film/inspector/film-inspector";
 import { ProductionShotStrip } from "@/film/panels/production-shot-strip";
 import { buildProductionShellModel, EMPTY_PRODUCTION_NAVIGATION_COUNTS, type ProductionNavigationKey } from "@/film/panels/production-shell-model";
 import { FilmNodeCard } from "@/film/nodes/film-node-card";
+import { describeFilmConnection } from "@/film/domain/edge-contract";
 import { isFilmProductionProjection } from "@/film/domain/node-projection";
 import { formatFilmSceneTitle, hasFilmSceneProjection } from "@/film/domain/scene-projection";
 import { CanvasProjectAssetModal } from "@/components/canvas/canvas-project-asset-modal";
@@ -52,7 +53,7 @@ import { Minimap } from "@/components/canvas/canvas-mini-map";
 import { CanvasNodePromptPanel, type CanvasNodeGenerationMode } from "@/components/canvas/canvas-node-prompt-panel";
 import { CanvasToolbar } from "@/components/canvas/canvas-toolbar";
 import { AssetPickerModal, type InsertAssetPayload } from "@/components/canvas/asset-picker-modal";
-import { getProject, saveProjectScene, saveProjectShot, type ProjectShot } from "@/services/api/projects";
+import { getProject, saveProjectFilmArtifact, saveProjectScene, saveProjectShot, type ProjectShot } from "@/services/api/projects";
 import { CanvasZoomControls } from "@/components/canvas/canvas-zoom-controls";
 import { CanvasShareModal } from "@/components/canvas/canvas-share-modal";
 import { CanvasScriptEditor, CanvasScriptNodeContent, STORYBOARD_HEADER_HEIGHT, STORYBOARD_ROW_HEIGHT, storyboardMinNodeHeight, storyboardTableHeight } from "@/components/canvas/canvas-script-node";
@@ -335,6 +336,9 @@ function InfiniteCanvasPage() {
     const selectedFilmNode = useMemo(() => (selectedNodeIds.size === 1 ? nodes.find((node) => node.id === Array.from(selectedNodeIds)[0] && Boolean(node.filmKind)) || null : null), [nodes, selectedNodeIds]);
     const productionShell = useMemo(() => (linkedProjectQuery.data ? buildProductionShellModel(linkedProjectQuery.data, nodes, activeTasks, selectedFilmNode) : null), [activeTasks, linkedProjectQuery.data, nodes, selectedFilmNode]);
     const refetchLinkedProject = linkedProjectQuery.refetch;
+	const handleFilmProjectionChanged = useCallback((nodeId: string, patch: Pick<CanvasNodeData, "title"> & { domainRef?: CanvasNodeData["domainRef"] }) => {
+		setNodes((current) => current.map((node) => node.id === nodeId ? { ...node, ...patch, domainRef: patch.domainRef || node.domainRef } : node));
+	}, [setNodes]);
     useEffect(() => {
         if (!projectLoaded || !linkedProjectQuery.data) return;
         setNodes((current) => reconcileFilmSceneProjections(refreshCanvasCharacterReferenceNodes(current, linkedProjectQuery.data.assets), linkedProjectQuery.data.project.id, linkedProjectQuery.data.scenes, gridSize));
@@ -775,7 +779,7 @@ function InfiniteCanvasPage() {
     });
 
     const addFilmNode = useCallback(
-        async (kind: "scene" | "shot" | "character") => {
+        async (kind: "scene" | "shot" | "character" | "location" | "prop" | "acting" | "prompt_pack") => {
             if (!linkedProjectId || !linkedProjectQuery.data) {
                 message.warning("请先将画布关联到短剧项目，再创建影视生产节点");
                 return;
@@ -785,27 +789,78 @@ function InfiniteCanvasPage() {
                 const detail = linkedProjectQuery.data;
                 const nextPosition = getCanvasCenter();
 
-                if (kind === "character") {
-                    const asset = detail.assets.find((item) => item.category === "character");
+                if (kind === "acting" || kind === "prompt_pack") {
+                    const shotId = selectedFilmNode?.domainRef?.shotId;
+                    const shot = shotId ? detail.shots.find((item) => item.id === shotId) : undefined;
+                    if (!shot) {
+                        message.info(`请先选择一个镜头，再创建${kind === "acting" ? "表演设计" : "提示词包"}`);
+                        return;
+                    }
+                    const existingNode = nodesRef.current.find((item) => item.filmKind === kind && item.domainRef?.shotId === shot.id);
+                    if (existingNode) {
+                        setSelectedNodeIds(new Set([existingNode.id]));
+                        message.info("当前镜头已经有对应生产节点");
+                        return;
+                    }
+                    const artifactType = kind === "acting" ? "acting" : "video_prompt_pack";
+                    const latest = (detail.filmArtifacts || [])
+                        .filter((item) => item.shotId === shot.id && item.artifactType === artifactType)
+                        .sort((left, right) => right.objectVersion - left.objectVersion)[0];
+                    const payload = kind === "acting"
+                        ? { objective: "", obstacle: "", tactic: "", beat: "", performance: "", continuityLocks: "" }
+                        : { sceneContext: "", activeReferences: "", locationMap: "", firstFrame: "", blocking: "", bodyOrientation: "", gaze: "", anchors: "", formatMode: "single-shot", optics: "", camera: "", timedActionBeats: "", physics: "", lighting: "", audio: "", acting: "", style: "", positiveLocks: [], localFailureLocks: [], emittedNegativeConstraints: [], compiledPrompt: "" };
+                    const artifact = latest || (await saveProjectFilmArtifact(linkedProjectId, { shotId: shot.id, artifactType, status: "draft", payload })).artifact;
+                    const shotNode = nodesRef.current.find((item) => item.filmKind === "shot" && item.domainRef?.shotId === shot.id);
+                    const node = createFilmCanvasNode(
+                        CanvasNodeType.Text,
+                        kind,
+                        shotNode ? { x: shotNode.position.x + shotNode.width + (kind === "acting" ? 48 : 408), y: shotNode.position.y + shotNode.height / 2 } : nextPosition,
+                        { projectId: linkedProjectId, unitId: shot.unitId, sceneId: shot.sceneId, shotId: shot.id, artifactId: artifact.id, artifactVersion: String(artifact.objectVersion) },
+                        { workflowKind: kind, workflowTitle: kind === "acting" ? "Acting" : "Prompt Pack" },
+                    );
+                    node.title = `${shot.title} · ${kind === "acting" ? "Acting" : "Prompt Pack"}`;
+                    node.width = kind === "acting" ? 300 : 340;
+                    node.height = 180;
+                    node.layout = { mode: "auto", lane: "shot_pipeline", order: kind === "acting" ? 1 : 2 };
+                    const sources = kind === "acting"
+                        ? [shotNode]
+                        : [shotNode, nodesRef.current.find((item) => item.filmKind === "acting" && item.domainRef?.shotId === shot.id)];
+                    setNodes((current) => applyFilmAutoLayout([...current, node], gridSize));
+                    setConnections((current) => {
+                        const additions = sources.filter(Boolean).flatMap((source) => {
+                            const semantic = describeFilmConnection(source, node);
+                            if (!source || !semantic || current.some((connection) => connection.fromNodeId === source.id && connection.toNodeId === node.id)) return [];
+                            return [{ id: nanoid(), fromNodeId: source.id, toNodeId: node.id, ...semantic }];
+                        });
+                        return additions.length ? [...current, ...additions] : current;
+                    });
+                    setSelectedNodeIds(new Set([node.id]));
+                    void refetchLinkedProject();
+                    return;
+                }
+
+                if (kind === "character" || kind === "location" || kind === "prop") {
+                    const category = kind === "character" ? "character" : kind === "location" ? "environment" : "prop";
+                    const asset = detail.assets.find((item) => item.category === category);
                     if (!asset) {
-                        message.info("请先在项目资产库创建角色资产");
-                        openProjectAssets("character");
+                        message.info(`请先在项目资产库创建${kind === "character" ? "角色" : kind === "location" ? "场地" : "道具"}资产`);
+                        openProjectAssets(category);
                         return;
                     }
                     const node = createFilmCanvasNode(
                         CanvasNodeType.Text,
-                        "character",
+                        kind,
                         nextPosition,
                         {
                             projectId: linkedProjectId,
                             assetId: asset.id,
                             assetVersionId: asset.primaryVersionId,
                         },
-                        { workflowKind: "character", workflowTitle: "角色资产" },
+                        { workflowKind: kind, workflowTitle: kind === "character" ? "角色资产" : kind === "location" ? "场地资产" : "道具资产" },
                     );
                     node.title = asset.title;
                     node.width = 280;
-                    node.height = 180;
+                    node.height = kind === "location" ? 200 : 180;
                     node.position = { x: nextPosition.x - node.width / 2, y: nextPosition.y - node.height / 2 };
                     setNodes((current) => applyFilmAutoLayout([...current, node], gridSize));
                     setSelectedNodeIds(new Set([node.id]));
@@ -865,6 +920,8 @@ function InfiniteCanvasPage() {
                         projectId: linkedProjectId,
                         sceneId: scene.id,
                         shotId: response.shot.id,
+                        artifactId: response.shot.contractArtifactId,
+                        artifactVersion: String(response.shot.contractVersion || 1),
                     },
                     { workflowKind: "shot", workflowTitle: "Shot Contract" },
                 );
@@ -901,7 +958,7 @@ function InfiniteCanvasPage() {
                 message.error("影视生产节点创建失败，请稍后重试");
             }
         },
-        [getCanvasCenter, gridSize, linkedProjectId, linkedProjectQuery.data, message, openProjectAssets, refetchLinkedProject, selectedFilmNode, setNodes, setSelectedNodeIds],
+        [getCanvasCenter, gridSize, linkedProjectId, linkedProjectQuery.data, message, nodesRef, openProjectAssets, refetchLinkedProject, selectedFilmNode, setConnections, setNodes, setSelectedNodeIds],
     );
 
     const { cancelPendingConnectionCreate, closeConnectionCreateMenu, connectionTargetAnchorRatio, connectionTargetNodeId, connectingParams, createConnectedNode, handleConnectStart, mouseWorld, pendingConnectionCreate, setConnecting } =
@@ -1503,7 +1560,7 @@ function InfiniteCanvasPage() {
 
     const renderCanvasNodeContent = useCallback(
         (contentNode: CanvasNodeData) => {
-            if (isFilmProductionProjection(contentNode)) return <FilmNodeCard node={contentNode} />;
+            if (isFilmProductionProjection(contentNode)) return <FilmNodeCard node={contentNode} project={linkedProjectQuery.data} />;
             if (contentNode.metadata?.workflowKind === "character" && contentNode.metadata.characterAssetId) {
                 return <CanvasCharacterReferenceNodeContent node={contentNode} />;
             }
@@ -1598,6 +1655,7 @@ function InfiniteCanvasPage() {
             handleConnectStart,
             handleGenerateNode,
             handleNodeResize,
+            linkedProjectQuery.data,
             mentionReferencesByNodeId,
             mergeVideosByIds,
             openDirectorWorkbench,
@@ -1940,6 +1998,10 @@ function InfiniteCanvasPage() {
                                     onAddFilmScene={() => void addFilmNode("scene")}
                                     onAddFilmShot={() => void addFilmNode("shot")}
                                     onAddFilmCharacter={() => void addFilmNode("character")}
+                                    onAddFilmLocation={() => void addFilmNode("location")}
+                                    onAddFilmProp={() => void addFilmNode("prop")}
+                                    onAddFilmActing={() => void addFilmNode("acting")}
+                                    onAddFilmPromptPack={() => void addFilmNode("prompt_pack")}
                                 />
                             ) : null}
                         </div>
@@ -2375,7 +2437,7 @@ function InfiniteCanvasPage() {
                         <CanvasLocalAgentPanel headless snapshot={agentSnapshot} canUndoOps={canUndoAgentOps} undoOpsCount={agentUndoCount} onApplyOps={applyAgentOps} onUndoOps={undoAgentOps} autoConnect={codexAutoConnect} />
                     ) : null}
                 </section>
-                {!focusMode ? <FilmInspector node={selectedFilmNode} project={linkedProjectQuery.data} activeSection={productionSection} /> : null}
+                {!focusMode ? <FilmInspector node={selectedFilmNode} project={linkedProjectQuery.data} activeSection={productionSection} onProjectChanged={refetchLinkedProject} onProjectionChanged={handleFilmProjectionChanged} /> : null}
             </main>
         </>
     );
