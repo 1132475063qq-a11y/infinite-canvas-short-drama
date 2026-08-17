@@ -145,25 +145,37 @@ func applyCanvasProjectionPatches(raw json.RawMessage, patches []model.CanvasPro
 	changed := false
 	currentProjectID := strings.TrimSpace(canvasProjectID)
 	connections, _ := payload["connections"].([]any)
+	taskPatchesByTaskID := uniqueFilmGenerationTaskPatchesByTaskID(patches)
 	for _, patch := range patches {
 		if strings.TrimSpace(patch.TaskID) == "" || currentProjectID == "" || currentProjectID != strings.TrimSpace(patch.TargetProjectID) {
 			continue
 		}
-		generationNode, unique := uniqueCanvasProjectionNode(nodes, patch.NodeID)
-		if !unique || !canvasGenerationNodeMatchesTarget(generationNode, patch.TargetProjectID, patch.TargetArtifactID, patch.TargetArtifactVersion) {
-			continue
-		}
 		switch patch.PatchKind {
 		case CanvasProjectionPatchKindFilmGenerationTask:
+			generationNode, unique := uniqueCanvasProjectionNode(nodes, patch.NodeID)
+			if !unique || !canvasGenerationNodeMatchesTarget(generationNode, patch.TargetProjectID, patch.TargetArtifactID, patch.TargetArtifactVersion) {
+				continue
+			}
 			domainRef, _ := generationNode["domainRef"].(map[string]any)
 			applyCanvasProjectionExecutionFacts(domainRef, patch)
 			changed = true
 		case CanvasProjectionPatchKindFilmGenerationResult:
+			resultNodeID := model.FilmGenerationResultCanvasNodeID(patch.TaskID)
+			if patch.NodeID != resultNodeID {
+				continue
+			}
+			taskPatch, trustedSource := taskPatchesByTaskID[patch.TaskID]
+			if !trustedSource || taskPatch.TargetProjectID != patch.TargetProjectID || taskPatch.TargetArtifactID != patch.TargetArtifactID || taskPatch.TargetArtifactVersion != patch.TargetArtifactVersion {
+				continue
+			}
+			generationNode, unique := uniqueCanvasProjectionNode(nodes, taskPatch.NodeID)
+			if !unique || !canvasGenerationNodeMatchesTarget(generationNode, patch.TargetProjectID, patch.TargetArtifactID, patch.TargetArtifactVersion) {
+				continue
+			}
 			media, available := canvasProjectionVideoMediaFromPatch(patch)
 			if !available {
 				continue
 			}
-			resultNodeID := model.FilmGenerationResultCanvasNodeID(patch.TaskID)
 			resultNode, found := uniqueCanvasProjectionNode(nodes, resultNodeID)
 			canonical := canonicalFilmGenerationResultNode(resultNode, generationNode, resultNodeID, patch, media)
 			if found {
@@ -178,7 +190,7 @@ func applyCanvasProjectionPatches(raw json.RawMessage, patches []model.CanvasPro
 				payload["nodes"] = nodes
 			}
 			var connectionChanged bool
-			connections, connectionChanged = ensureFilmGenerationResultConnection(connections, patch.TaskID, patch.NodeID, resultNodeID)
+			connections, connectionChanged = ensureFilmGenerationResultConnection(connections, patch.TaskID, taskPatch.NodeID, resultNodeID)
 			if connectionChanged {
 				payload["connections"] = connections
 			}
@@ -196,6 +208,33 @@ func applyCanvasProjectionPatches(raw json.RawMessage, patches []model.CanvasPro
 		return nil, err
 	}
 	return json.RawMessage(encoded), nil
+}
+
+// A Result patch owns the derived Result node ID. Its source generation node
+// must come from the immutable Task patch for the same Task; target matching
+// alone is insufficient because a Canvas may contain repeated projections.
+func uniqueFilmGenerationTaskPatchesByTaskID(patches []model.CanvasProjectionPatch) map[string]model.CanvasProjectionPatch {
+	result := make(map[string]model.CanvasProjectionPatch)
+	ambiguous := make(map[string]struct{})
+	for _, patch := range patches {
+		if patch.PatchKind != CanvasProjectionPatchKindFilmGenerationTask {
+			continue
+		}
+		taskID := strings.TrimSpace(patch.TaskID)
+		if taskID == "" {
+			continue
+		}
+		if _, invalid := ambiguous[taskID]; invalid {
+			continue
+		}
+		if _, exists := result[taskID]; exists {
+			delete(result, taskID)
+			ambiguous[taskID] = struct{}{}
+			continue
+		}
+		result[taskID] = patch
+	}
+	return result
 }
 
 // stripClientFilmGenerationTaskClaims ensures execution IDs stay server-owned

@@ -249,8 +249,17 @@ func TestCanvasProjectionAppliesOnlyServerRuntimeExecutionFacts(t *testing.T) {
 
 func TestCanvasProjectionCreatesFilmGenerationResultAndRejectsForgedRuntimeFields(t *testing.T) {
 	raw := json.RawMessage(canvasProjectionTestPayload("canvas-result", "project-result", "generation-node", "generation-request-v1", 1, "browser-task"))
-	patch := model.CanvasProjectionPatch{
+	resultNodeID := model.FilmGenerationResultCanvasNodeID("server-task")
+	taskPatch := model.CanvasProjectionPatch{
 		NodeID:                "generation-node",
+		PatchKind:             CanvasProjectionPatchKindFilmGenerationTask,
+		TargetProjectID:       "project-result",
+		TargetArtifactID:      "generation-request-v1",
+		TargetArtifactVersion: 1,
+		TaskID:                "server-task",
+	}
+	patch := model.CanvasProjectionPatch{
+		NodeID:                resultNodeID,
 		PatchKind:             CanvasProjectionPatchKindFilmGenerationResult,
 		TargetProjectID:       "project-result",
 		TargetArtifactID:      "generation-request-v1",
@@ -262,7 +271,15 @@ func TestCanvasProjectionCreatesFilmGenerationResultAndRejectsForgedRuntimeField
 		ResultURL:             "/api/resources/server-resource/file",
 		ResultPayload:         `{"mode":"video","video":{"url":"/api/resources/server-resource/file","storageKey":"resource:server-resource","resourceId":"server-resource","mimeType":"video/mp4","width":1080,"height":1920,"durationMs":5000,"bytes":12345}}`,
 	}
-	projected, err := applyCanvasProjectionPatches(raw, []model.CanvasProjectionPatch{patch}, "project-result", time.Time{})
+	withoutTaskPatch, err := applyCanvasProjectionPatches(raw, []model.CanvasProjectionPatch{patch}, "project-result", time.Time{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := canvasProjectionNodeByID(withoutTaskPatch, resultNodeID); err == nil {
+		t.Fatal("Result patch must not guess a source generation node without its server Task patch")
+	}
+
+	projected, err := applyCanvasProjectionPatches(raw, []model.CanvasProjectionPatch{taskPatch, patch}, "project-result", time.Time{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -273,7 +290,6 @@ func TestCanvasProjectionCreatesFilmGenerationResultAndRejectsForgedRuntimeField
 	if canvasProjectionString(source["filmKind"]) != "generation" {
 		t.Fatalf("Generation Request must remain a generation node: %#v", source)
 	}
-	resultNodeID := model.FilmGenerationResultCanvasNodeID(patch.TaskID)
 	resultNode, err := canvasProjectionNodeByID(projected, resultNodeID)
 	if err != nil {
 		t.Fatal(err)
@@ -328,7 +344,7 @@ func TestCanvasProjectionCreatesFilmGenerationResultAndRejectsForgedRuntimeField
 		t.Fatalf("browser runtime claims were persisted: ref=%#v metadata=%#v", strippedRef, strippedMetadata)
 	}
 
-	reprojected, err := applyCanvasProjectionPatches(stored, []model.CanvasProjectionPatch{patch}, "project-result", time.Time{})
+	reprojected, err := applyCanvasProjectionPatches(stored, []model.CanvasProjectionPatch{taskPatch, patch}, "project-result", time.Time{})
 	if err != nil {
 		t.Fatal(err)
 	}

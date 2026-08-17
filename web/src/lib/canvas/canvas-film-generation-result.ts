@@ -80,11 +80,12 @@ export function projectFilmGenerationResultNode(nodes: CanvasNodeData[], task: G
 
     const sourceNodeId = filmGenerationTaskCanvasNodeId(task) || fallbackGenerationNodeId;
     const generationNode = nodes.find((node) => node.id === sourceNodeId && node.filmKind === "generation");
-    if (!generationNode?.domainRef?.projectId) return nodes;
+    const generationRef = generationNode?.domainRef;
+    if (!generationNode || !generationRef?.projectId) return nodes;
 
     const resultNodeId = filmGenerationResultNodeId(task.id);
     const existing = nodes.find((node) => node.id === resultNodeId);
-    const nextResult = createFilmGenerationResultNode(generationNode, task, media, existing, resultNodeId);
+    const nextResult = createFilmGenerationResultNode(generationNode, generationRef, task, media, existing, resultNodeId);
     if (existing) {
         return nodes.map((node) => (node.id === resultNodeId ? nextResult : node));
     }
@@ -108,14 +109,8 @@ export function ensureFilmGenerationResultConnection(connections: CanvasConnecti
 
     const current = connections[matchingIndex];
     const next = { ...current, ...canonical, id: current.id || canonicalId };
-    if (
-        current.id === next.id
-        && current.fromNodeId === next.fromNodeId
-        && current.toNodeId === next.toNodeId
-        && current.edgeType === next.edgeType
-        && current.filmPorts?.from === next.filmPorts.from
-        && current.filmPorts?.to === next.filmPorts.to
-    ) return connections;
+    if (current.id === next.id && current.fromNodeId === next.fromNodeId && current.toNodeId === next.toNodeId && current.edgeType === next.edgeType && current.filmPorts?.from === next.filmPorts.from && current.filmPorts?.to === next.filmPorts.to)
+        return connections;
     return connections.map((connection, index) => (index === matchingIndex ? next : connection));
 }
 
@@ -145,7 +140,7 @@ export function reconcileFilmGenerationResultConnections(nodes: readonly CanvasN
     return next;
 }
 
-function createFilmGenerationResultNode(generationNode: CanvasNodeData, task: GenerationTask, media: VideoResultMedia, existing: CanvasNodeData | undefined, resultNodeId: string): CanvasNodeData {
+function createFilmGenerationResultNode(generationNode: CanvasNodeData, generationRef: NonNullable<CanvasNodeData["domainRef"]>, task: GenerationTask, media: VideoResultMedia, existing: CanvasNodeData | undefined, resultNodeId: string): CanvasNodeData {
     const defaultSize = videoNodeSize(media);
     const title = existing?.title?.trim() || `${generationNode.title || "视频生成"} · 视频结果`;
     const metadata: CanvasNodeMetadata = {
@@ -174,12 +169,12 @@ function createFilmGenerationResultNode(generationNode: CanvasNodeData, task: Ge
     // server projection; they must never be copied from a generation node.
     const inherited = existing?.domainRef;
     const domainRef = {
-        projectId: generationNode.domainRef.projectId,
-        unitId: generationNode.domainRef.unitId,
-        sceneId: generationNode.domainRef.sceneId,
-        shotId: generationNode.domainRef.shotId,
-        artifactId: generationNode.domainRef.artifactId,
-        artifactVersion: generationNode.domainRef.artifactVersion,
+        projectId: generationRef.projectId,
+        unitId: generationRef.unitId,
+        sceneId: generationRef.sceneId,
+        shotId: generationRef.shotId,
+        artifactId: generationRef.artifactId,
+        artifactVersion: generationRef.artifactVersion,
         taskId: task.id,
         // Preserve real IDs from a server projection, but never manufacture any
         // execution facts merely because an URL or storage key looks familiar.
@@ -218,15 +213,13 @@ function filmGenerationResultSourceNodeId(nodes: readonly CanvasNodeData[], resu
 }
 
 function taskIdFromFilmGenerationResultConnection(connectionId: string) {
-    return connectionId.startsWith(FILM_GENERATION_RESULT_EDGE_ID_PREFIX)
-        ? connectionId.slice(FILM_GENERATION_RESULT_EDGE_ID_PREFIX.length).trim()
-        : "";
+    return connectionId.startsWith(FILM_GENERATION_RESULT_EDGE_ID_PREFIX) ? connectionId.slice(FILM_GENERATION_RESULT_EDGE_ID_PREFIX.length).trim() : "";
 }
 
 function videoNodeSize(media: VideoResultMedia) {
     if (media.width && media.height) {
         const width = Math.min(480, media.width);
-        const height = Math.round(width * media.height / media.width);
+        const height = Math.round((width * media.height) / media.width);
         if (height > 0) return { width, height };
     }
     return { width: 360, height: 203 };
@@ -242,7 +235,7 @@ function parseRecord(value: string | undefined) {
 }
 
 function asRecord(value: unknown): Record<string, unknown> | null {
-    return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : null;
+    return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : null;
 }
 
 function firstString(...values: unknown[]) {
