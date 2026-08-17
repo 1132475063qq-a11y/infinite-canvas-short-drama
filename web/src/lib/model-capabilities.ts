@@ -27,6 +27,7 @@ export type ImageCapabilityConfig = {
         default: string;
     };
     transparentBackground: { supported: boolean; default: boolean };
+    countParameter?: { supported: boolean };
     responseFormat: { supported: boolean };
     outputFormat: { supported: boolean };
     maxOutputs: number;
@@ -70,6 +71,7 @@ export function defaultImageCapabilityConfig(protocol?: ModelProtocol, model = "
         size: { parameter: "size", values: [...defaultImageSizes], default: "1:1", allowCustom: true },
         quality: { supported: true, values: ["auto", "low", "medium", "high"], default: "auto" },
         transparentBackground: { supported: true, default: false },
+        countParameter: { supported: true },
         responseFormat: { supported: true },
         outputFormat: { supported: true },
         maxOutputs: 15,

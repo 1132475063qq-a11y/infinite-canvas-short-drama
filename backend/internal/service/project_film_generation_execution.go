@@ -112,7 +112,7 @@ func filmGenerationAttemptFromRuntimeInput(task model.Task, input map[string]any
 	if attempt.DomainProjectID == "" || attempt.CanvasID == "" || attempt.CanvasNodeID == "" || attempt.GenerationRequestArtifactID == "" || attempt.GenerationRequestArtifactVersion < 1 || attempt.RequestFingerprint == "" || attempt.ChannelID == "" || attempt.ChannelModelID == "" || attempt.Model == "" || attempt.Capability == "" || attempt.Protocol == "" {
 		return nil, errors.New("影视生成任务的 Generation Request 或 Provider 路由快照不完整")
 	}
-	if task.ProjectID != attempt.CanvasID || strings.TrimPrefix(task.Model, "models/") != attempt.Model {
+	if task.DomainProjectID != attempt.DomainProjectID || task.CanvasID != attempt.CanvasID || strings.TrimPrefix(task.Model, "models/") != attempt.Model {
 		return nil, errors.New("影视生成任务与 Attempt 路由快照不一致")
 	}
 	return attempt, nil

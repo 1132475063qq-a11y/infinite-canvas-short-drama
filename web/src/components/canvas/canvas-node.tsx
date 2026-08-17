@@ -20,7 +20,7 @@ import { MEDIA_NODE_MIN_SIZE } from "@/lib/canvas/canvas-node-size";
 import { VideoPlayer } from "@/components/video-player";
 import { createDefaultSubtitleStyle } from "@/types/timeline";
 import { CanvasSubtitleOverlay } from "./canvas-subtitle-overlay";
-import { isFilmProductionProjection } from "@/film/domain/node-projection";
+import { isFilmGenerationResultMediaProjection, isFilmProductionProjection } from "@/film/domain/node-projection";
 import { CanvasConnectionSideRail } from "./canvas-connection-side-rail";
 
 type ResizeCorner = "top-left" | "top-right" | "bottom-left" | "bottom-right";
@@ -510,7 +510,7 @@ export const CanvasNode = React.memo(function CanvasNode({
 });
 
 function NodeContent(props: NodeContentRendererProps) {
-    const hasCustomContent = isFilmProductionProjection(props.node)
+    const hasCustomContent = (isFilmProductionProjection(props.node) && !isFilmGenerationResultMediaProjection(props.node))
         || props.node.type === CanvasNodeType.Config
         || props.node.type === CanvasNodeType.Script
         || Boolean(props.node.metadata?.directorSceneId)

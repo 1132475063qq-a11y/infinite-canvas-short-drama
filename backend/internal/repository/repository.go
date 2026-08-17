@@ -1,6 +1,7 @@
 package repository
 
 import (
+	"encoding/json"
 	"errors"
 	"sort"
 	"strings"
@@ -23,6 +24,10 @@ var ErrTaskStateConflict = errors.New("task state changed concurrently")
 var ErrTextReplayQuotaExceeded = errors.New("text replay quota exceeded")
 
 var ErrTextReplayClosed = errors.New("text replay task is closed")
+
+var ErrFilmArtifactVersionChanged = errors.New("film artifact version changed concurrently")
+
+var ErrProjectHasUnsettledTasks = errors.New("project has active or unsettled tasks")
 
 type Repository struct {
 	db *gorm.DB
@@ -477,6 +482,9 @@ func (r *Repository) SaveTaskCompletion(task *model.Task, expected model.TaskSta
 			if err := tx.Create(&results[index]).Error; err != nil {
 				return err
 			}
+		}
+		if err := createFilmGenerationResultProjection(tx, task, results, completedAt); err != nil {
+			return err
 		}
 		return nil
 	})
@@ -1132,6 +1140,17 @@ func (r *Repository) UpdateProject(project *model.Project) error {
 
 func (r *Repository) DeleteProject(userID string, id string) error {
 	return r.db.Transaction(func(tx *gorm.DB) error {
+		var project model.Project
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&project, "id = ? AND user_id = ?", id, userID).Error; err != nil {
+			return err
+		}
+		unsettled, err := projectHasUnsettledTasks(tx, userID, id)
+		if err != nil {
+			return err
+		}
+		if unsettled {
+			return ErrProjectHasUnsettledTasks
+		}
 		if err := tx.Delete(&model.CanvasProjectionPatch{}, "user_id = ? AND target_project_id = ?", userID, id).Error; err != nil {
 			return err
 		}
@@ -1179,6 +1198,45 @@ func (r *Repository) DeleteProject(userID string, id string) error {
 		}
 		return tx.Delete(&model.Project{}, "id = ? AND user_id = ?", id, userID).Error
 	})
+}
+
+func projectHasUnsettledTasks(tx *gorm.DB, userID string, projectID string) (bool, error) {
+	canvasIDs := tx.Model(&model.CanvasProject{}).
+		Select("id").
+		Where("user_id = ? AND project_id = ?", userID, projectID)
+	var count int64
+	if err := tx.Model(&model.Task{}).
+		Where("user_id = ? AND status IN ?", userID, []model.TaskStatus{model.TaskStatusQueued, model.TaskStatusRunning}).
+		Where("domain_project_id = ? OR project_id = ? OR canvas_id IN (?) OR project_id IN (?)", projectID, projectID, canvasIDs, canvasIDs).
+		Count(&count).Error; err != nil {
+		return false, err
+	}
+	if count > 0 {
+		return true, nil
+	}
+	if err := tx.Model(&model.GenerationAttempt{}).
+		Where("user_id = ? AND domain_project_id = ? AND status IN ?", userID, projectID, []model.GenerationAttemptStatus{
+			model.GenerationAttemptStatusQueued,
+			model.GenerationAttemptStatusRunning,
+			model.GenerationAttemptStatusUncertain,
+		}).Count(&count).Error; err != nil {
+		return false, err
+	}
+	if count > 0 {
+		return true, nil
+	}
+	if err := tx.Model(&model.ProviderJob{}).
+		Joins("JOIN generation_attempts ON generation_attempts.id = provider_jobs.generation_attempt_id").
+		Where("generation_attempts.user_id = ? AND generation_attempts.domain_project_id = ?", userID, projectID).
+		Where("provider_jobs.status IN ?", []model.ProviderJobStatus{
+			model.ProviderJobStatusAccepted,
+			model.ProviderJobStatusRunning,
+			model.ProviderJobStatusCancellationRequested,
+			model.ProviderJobStatusUncertain,
+		}).Count(&count).Error; err != nil {
+		return false, err
+	}
+	return count > 0, nil
 }
 
 func (r *Repository) BumpProjectRevision(projectID string) error {
@@ -1560,9 +1618,11 @@ func (r *Repository) SaveShotWithContract(shot *model.Shot, create bool, artifac
 			}
 		}
 		if artifact != nil {
+			if err := normalizeFilmArtifactScope(artifact); err != nil {
+				return err
+			}
 			var latest int
-			if err := tx.Model(&model.FilmArtifact{}).
-				Where("project_id = ? AND shot_id = ? AND artifact_type = ?", artifact.ProjectID, artifact.ShotID, artifact.ArtifactType).
+			if err := filmArtifactScopeQuery(tx.Model(&model.FilmArtifact{}), artifact.ProjectID, artifact.Scope, artifact.ScopeID, artifact.ArtifactType).
 				Select("COALESCE(MAX(object_version), 0)").Scan(&latest).Error; err != nil {
 				return err
 			}
@@ -1595,7 +1655,7 @@ func (r *Repository) SaveShotWithContract(shot *model.Shot, create bool, artifac
 
 func (r *Repository) ProjectFilmArtifacts(projectID string) ([]model.FilmArtifact, error) {
 	var artifacts []model.FilmArtifact
-	err := r.db.Where("project_id = ?", projectID).Order("artifact_type asc, shot_id asc, object_version desc").Find(&artifacts).Error
+	err := r.db.Where("project_id = ?", projectID).Order("artifact_type asc, scope asc, scope_id asc, shot_id asc, object_version desc").Find(&artifacts).Error
 	return artifacts, err
 }
 
@@ -1634,7 +1694,7 @@ func (r *Repository) SaveEcommerceArtifactVersion(artifact *model.EcommerceArtif
 			return err
 		}
 		result := tx.Model(&model.Project{}).Where("id = ?", artifact.ProjectID).Updates(map[string]any{
-			"revision": gorm.Expr("revision + 1"),
+			"revision":   gorm.Expr("revision + 1"),
 			"updated_at": artifact.UpdatedAt,
 		})
 		if result.Error != nil {
@@ -1648,8 +1708,26 @@ func (r *Repository) SaveEcommerceArtifactVersion(artifact *model.EcommerceArtif
 }
 
 func (r *Repository) LatestFilmArtifact(projectID string, shotID string, artifactType string) (*model.FilmArtifact, error) {
+	return r.LatestFilmArtifactForScope(projectID, model.FilmArtifactScopeShot, shotID, artifactType)
+}
+
+// LatestFilmArtifactForScope returns the latest immutable version for any
+// production scope. The legacy fallback keeps pre-scope shot artifacts
+// readable while they are being migrated.
+func (r *Repository) LatestFilmArtifactForScope(projectID string, scope model.FilmArtifactScope, scopeID string, artifactType string) (*model.FilmArtifact, error) {
 	var artifact model.FilmArtifact
-	err := r.db.Where("project_id = ? AND shot_id = ? AND artifact_type = ?", projectID, shotID, artifactType).
+	err := filmArtifactScopeQuery(r.db, projectID, scope, scopeID, artifactType).
+		Order("object_version desc").First(&artifact).Error
+	if err != nil {
+		return nil, err
+	}
+	return &artifact, nil
+}
+
+func (r *Repository) LatestFilmArtifactForScopeWithStatus(projectID string, scope model.FilmArtifactScope, scopeID string, artifactType string, status string) (*model.FilmArtifact, error) {
+	var artifact model.FilmArtifact
+	err := filmArtifactScopeQuery(r.db, projectID, scope, scopeID, artifactType).
+		Where("status = ?", status).
 		Order("object_version desc").First(&artifact).Error
 	if err != nil {
 		return nil, err
@@ -1673,14 +1751,15 @@ func (r *Repository) FilmArtifactForProject(projectID string, artifactID string)
 // project revision in the same transaction. The Shot row is the stable lock
 // target because artifact versions themselves are append-only.
 func (r *Repository) SaveFilmArtifactVersion(artifact *model.FilmArtifact) error {
+	if err := normalizeFilmArtifactScope(artifact); err != nil {
+		return err
+	}
 	return r.db.Transaction(func(tx *gorm.DB) error {
-		var shot model.Shot
-		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&shot, "id = ? AND project_id = ?", artifact.ShotID, artifact.ProjectID).Error; err != nil {
+		if err := lockFilmArtifactScope(tx, *artifact); err != nil {
 			return err
 		}
 		var latest int
-		if err := tx.Model(&model.FilmArtifact{}).
-			Where("project_id = ? AND shot_id = ? AND artifact_type = ?", artifact.ProjectID, artifact.ShotID, artifact.ArtifactType).
+		if err := filmArtifactScopeQuery(tx.Model(&model.FilmArtifact{}), artifact.ProjectID, artifact.Scope, artifact.ScopeID, artifact.ArtifactType).
 			Select("COALESCE(MAX(object_version), 0)").Scan(&latest).Error; err != nil {
 			return err
 		}
@@ -1702,7 +1781,179 @@ func (r *Repository) SaveFilmArtifactVersion(artifact *model.FilmArtifact) error
 	})
 }
 
+// SaveSceneAssetPackAndGate appends a scene asset pack and its derived spatial
+// gate under one scene lock. The gate payload is amended with the exact pack
+// version inside the transaction, so a concurrent writer can never leave a
+// gate pointing at an uncommitted or different pack version.
+func (r *Repository) SaveSceneAssetPackAndGate(pack *model.FilmArtifact, gate *model.FilmArtifact, expectedLatestPackVersion int) error {
+	if pack == nil || gate == nil {
+		return gorm.ErrInvalidData
+	}
+	if err := normalizeFilmArtifactScope(pack); err != nil {
+		return err
+	}
+	if err := normalizeFilmArtifactScope(gate); err != nil {
+		return err
+	}
+	if pack.Scope != model.FilmArtifactScopeScene || gate.Scope != model.FilmArtifactScopeScene || pack.ScopeID != gate.ScopeID || pack.ProjectID != gate.ProjectID {
+		return gorm.ErrInvalidData
+	}
+	return r.db.Transaction(func(tx *gorm.DB) error {
+		if err := lockFilmArtifactScope(tx, *pack); err != nil {
+			return err
+		}
+		var latestPack int
+		if err := filmArtifactScopeQuery(tx.Model(&model.FilmArtifact{}), pack.ProjectID, pack.Scope, pack.ScopeID, pack.ArtifactType).
+			Select("COALESCE(MAX(object_version), 0)").Scan(&latestPack).Error; err != nil {
+			return err
+		}
+		if latestPack != expectedLatestPackVersion {
+			return ErrFilmArtifactVersionChanged
+		}
+		pack.ObjectVersion = latestPack + 1
+		if err := tx.Create(pack).Error; err != nil {
+			return err
+		}
+
+		// Keep the derived artifact self-describing without trusting a client
+		// supplied pack version.
+		var gatePayload map[string]any
+		if err := json.Unmarshal([]byte(gate.PayloadJSON), &gatePayload); err != nil {
+			return err
+		}
+		gatePayload["packArtifactId"] = pack.ID
+		gatePayload["packArtifactVersion"] = pack.ObjectVersion
+		gatePayload["packVersion"] = pack.ObjectVersion
+		encodedGatePayload, err := json.Marshal(gatePayload)
+		if err != nil {
+			return err
+		}
+		gate.PayloadJSON = string(encodedGatePayload)
+		var latestGate int
+		if err := filmArtifactScopeQuery(tx.Model(&model.FilmArtifact{}), gate.ProjectID, gate.Scope, gate.ScopeID, gate.ArtifactType).
+			Select("COALESCE(MAX(object_version), 0)").Scan(&latestGate).Error; err != nil {
+			return err
+		}
+		gate.ObjectVersion = latestGate + 1
+		if err := tx.Create(gate).Error; err != nil {
+			return err
+		}
+		result := tx.Model(&model.Project{}).Where("id = ?", pack.ProjectID).Updates(map[string]any{
+			"revision":   gorm.Expr("revision + 2"),
+			"updated_at": pack.UpdatedAt,
+		})
+		if result.Error != nil {
+			return result.Error
+		}
+		if result.RowsAffected != 1 {
+			return gorm.ErrRecordNotFound
+		}
+		return nil
+	})
+}
+
+// normalizeFilmArtifactScope fills the explicit scope for old shot callers
+// and rejects ambiguous records. It is deliberately kept in the repository so
+// every write path (including shot-contract imports) gets the same invariant.
+func normalizeFilmArtifactScope(artifact *model.FilmArtifact) error {
+	if artifact == nil || strings.TrimSpace(artifact.ProjectID) == "" {
+		return gorm.ErrInvalidData
+	}
+	if artifact.Scope == "" {
+		switch {
+		case strings.TrimSpace(artifact.ShotID) != "":
+			artifact.Scope = model.FilmArtifactScopeShot
+			artifact.ScopeID = artifact.ShotID
+		case strings.TrimSpace(artifact.SceneID) != "":
+			artifact.Scope = model.FilmArtifactScopeScene
+			artifact.ScopeID = artifact.SceneID
+		case strings.TrimSpace(artifact.UnitID) != "":
+			artifact.Scope = model.FilmArtifactScopeUnit
+			artifact.ScopeID = artifact.UnitID
+		default:
+			artifact.Scope = model.FilmArtifactScopeProject
+			artifact.ScopeID = artifact.ProjectID
+		}
+	}
+	if strings.TrimSpace(artifact.ScopeID) == "" {
+		return gorm.ErrInvalidData
+	}
+	switch artifact.Scope {
+	case model.FilmArtifactScopeProject:
+		if artifact.ScopeID != artifact.ProjectID {
+			return gorm.ErrInvalidData
+		}
+	case model.FilmArtifactScopeUnit:
+		if artifact.UnitID != "" && artifact.UnitID != artifact.ScopeID {
+			return gorm.ErrInvalidData
+		}
+		artifact.UnitID = artifact.ScopeID
+	case model.FilmArtifactScopeScene:
+		if artifact.SceneID != "" && artifact.SceneID != artifact.ScopeID {
+			return gorm.ErrInvalidData
+		}
+		artifact.SceneID = artifact.ScopeID
+	case model.FilmArtifactScopeShot:
+		if artifact.ShotID != "" && artifact.ShotID != artifact.ScopeID {
+			return gorm.ErrInvalidData
+		}
+		artifact.ShotID = artifact.ScopeID
+	default:
+		return gorm.ErrInvalidData
+	}
+	return nil
+}
+
+func filmArtifactScopeQuery(query *gorm.DB, projectID string, scope model.FilmArtifactScope, scopeID string, artifactType string) *gorm.DB {
+	legacyColumn := "shot_id"
+	switch scope {
+	case model.FilmArtifactScopeProject:
+		legacyColumn = "project_id"
+	case model.FilmArtifactScopeUnit:
+		legacyColumn = "unit_id"
+	case model.FilmArtifactScopeScene:
+		legacyColumn = "scene_id"
+	case model.FilmArtifactScopeShot:
+		legacyColumn = "shot_id"
+	default:
+		return query.Where("project_id = ? AND artifact_type = ? AND 1 = 0", projectID, artifactType)
+	}
+	return query.Where("project_id = ? AND artifact_type = ? AND ((scope = ? AND scope_id = ?) OR (scope = '' AND "+legacyColumn+" = ?))", projectID, artifactType, scope, scopeID, scopeID)
+}
+
+func lockFilmArtifactScope(tx *gorm.DB, artifact model.FilmArtifact) error {
+	var target any
+	var query string
+	switch artifact.Scope {
+	case model.FilmArtifactScopeProject:
+		target = &model.Project{}
+		query = "id = ?"
+	case model.FilmArtifactScopeUnit:
+		target = &model.ProjectUnit{}
+		query = "id = ? AND project_id = ?"
+	case model.FilmArtifactScopeScene:
+		target = &model.Scene{}
+		query = "id = ? AND project_id = ?"
+	case model.FilmArtifactScopeShot:
+		target = &model.Shot{}
+		query = "id = ? AND project_id = ?"
+	default:
+		return gorm.ErrInvalidData
+	}
+	args := []any{artifact.ScopeID}
+	if artifact.Scope != model.FilmArtifactScopeProject {
+		args = append(args, artifact.ProjectID)
+	}
+	conditions := append([]any{query}, args...)
+	return tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(target, conditions...).Error
+}
+
 func (r *Repository) ReplaceProjectUnitShots(projectID string, unitID string, shots []model.Shot, artifacts []model.FilmArtifact) error {
+	for index := range artifacts {
+		if err := normalizeFilmArtifactScope(&artifacts[index]); err != nil {
+			return err
+		}
+	}
 	return r.db.Transaction(func(tx *gorm.DB) error {
 		shotIDs := tx.Model(&model.Shot{}).Select("id").Where("project_id = ? AND unit_id = ?", projectID, unitID)
 		if err := tx.Where("shot_id IN (?)", shotIDs).Delete(&model.ShotAssetReference{}).Error; err != nil {

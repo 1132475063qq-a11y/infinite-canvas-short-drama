@@ -1,0 +1,69 @@
+---
+title: 代码地图
+---
+
+# 代码地图
+
+## 顶层职责
+
+| 路径 | 职责 |
+| --- | --- |
+| `web/` | Vite + React 前端，包含路由、页面、画布、Film、Ecommerce 和 API 适配。 |
+| `backend/` | Go + Gin + GORM 后端，负责认证、项目、任务、账务、渠道、资源和 Film 执行事实链。 |
+| `canvas-agent/` | 独立的本地 Canvas Agent 运行单元；修改前先阅读其 README。 |
+| `plugins/infinite-canvas/` | Codex App 插件与画布操作 Skill。 |
+| `docs/production-canvas/` | Film / Ecommerce 的冻结合同、规划边界与实现规格。 |
+| `docs/content/docs/` | 功能、代码地图、待办、验收和数据库文档。 |
+
+## 前端
+
+| 路径 | 职责 |
+| --- | --- |
+| `web/src/router.tsx` | 唯一路由表及认证/功能开关边界。 |
+| `web/src/pages/` | 路由页面和页面私有组件；项目详情在 `pages/projects/`，画布在 `pages/canvas/`。 |
+| `web/src/components/canvas/` | 跨页面画布节点、工具栏、连接与画布共享组件。 |
+| `web/src/stores/canvas/` | 画布持久化状态、选择、历史与交互状态。 |
+| `web/src/lib/canvas/` | 节点投影、布局、连接、资源引用和运行时同步等纯逻辑。 |
+| `web/src/film/` | Film 节点解析、Artifact 投影、Inspector、面板和领域 UI。 |
+| `web/src/ecommerce/` | Provider-free Prototype A 的领域对象、Skill、Executor、QA、Result Grid 与 Provider Evaluation 记录合同。 |
+| `web/src/services/api/` | 统一后端业务 API；`request.ts` 是业务 JSON 的公共入口。 |
+| `web/src/styles/globals.css` | Primitive → Semantic → Component 三层 Token、全局样式和受控第三方覆盖。 |
+
+## 后端
+
+| 路径 | 职责 |
+| --- | --- |
+| `backend/cmd/server/` | 进程入口、数据库启动、迁移、运行时校验和路由注册。 |
+| `backend/internal/handler/` | HTTP 入参、登录态、调用 Service 与 `{ code, data, msg }` 响应。 |
+| `backend/internal/service/` | 权限、业务规则、事务、计费、任务、渠道与外部调用编排。 |
+| `backend/internal/repository/` | GORM 数据访问，不承载业务判断。 |
+| `backend/internal/model/` | 数据模型、枚举与简单模型方法。 |
+| `backend/internal/database/` | Schema 清单、数据库连接、迁移和跨库配置。 |
+
+## Film 数据流
+
+```text
+FilmArtifact / Scene Asset Pack
+  -> Generation Request (immutable revision)
+  -> Task Draft / Provider Route Catalog
+  -> atomic submit
+  -> Task + GenerationAttempt + billing + CanvasProjectionPatch
+  -> ProviderJob
+  -> Result + Canvas result projection
+```
+
+场景空间 Pack 是 Generation Request 的前置门禁，不是视频模型的自由场景设计提示。完整合同见 [场景空间连续性合同](../../production-canvas/scene-spatial-contract.md)。
+
+## Ecommerce 数据流
+
+```text
+商品资产
+  -> ProductDNA
+  -> CreativeDirection
+  -> ScenePlan
+  -> still-life.lifestyle-tabletop
+  -> CreativeShotPlan (4 variations)
+  -> Result Grid + Basic QA
+```
+
+上图目前只到 Provider-free Prototype A；尚未接入真实生成 Job、媒体 Result 或自动视觉 QA。详细边界见 [Ecommerce Prototype A 附录](../../production-canvas/ecommerce-prototype-addendum.md)。

@@ -3,6 +3,7 @@ import { useEffect, useRef } from "react";
 import { App } from "antd";
 
 import { createModelChannel, useConfigStore } from "@/stores/use-config-store";
+import { useUserStore } from "@/stores/use-user-store";
 import { navigateToSettings } from "@/lib/settings-navigation";
 
 export function ClientRootInit({ children }: { children: ReactNode }) {
@@ -10,6 +11,7 @@ export function ClientRootInit({ children }: { children: ReactNode }) {
     const handledConfigParams = useRef(false);
     const updateConfig = useConfigStore((state) => state.updateConfig);
     const config = useConfigStore((state) => state.config);
+    const customChannelsEnabled = useUserStore((state) => state.features.customChannelsEnabled);
 
     useEffect(() => {
         const interactiveSelector = 'button, [role="button"], a, [class*="card"], [class*="Card"]';
@@ -38,6 +40,11 @@ export function ClientRootInit({ children }: { children: ReactNode }) {
         searchParams.delete("apiKey");
         searchParams.delete("apikey");
         window.history.replaceState(null, "", `${window.location.pathname}${searchParams.size ? `?${searchParams}` : ""}${window.location.hash}`);
+        if (!customChannelsEnabled) {
+            navigateToSettings({ section: "models" });
+            message.warning("平台模式仅允许使用管理员托管的系统模型，已忽略自定义渠道地址");
+            return;
+        }
         const firstChannel = config.channels[0];
         updateConfig(
             "channels",
@@ -56,7 +63,7 @@ export function ClientRootInit({ children }: { children: ReactNode }) {
         navigateToSettings({ section: "channels" });
         if (ignoredApiKey) message.warning("出于安全考虑，链接中的 API Key 已忽略，请在配置中手动填写");
         else message.success("已导入本地直连地址");
-    }, [config.channels, message, updateConfig]);
+    }, [config.channels, customChannelsEnabled, message, updateConfig]);
 
     return <>{children}</>;
 }

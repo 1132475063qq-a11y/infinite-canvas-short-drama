@@ -29,7 +29,7 @@ import { buildProductionShellModel, EMPTY_PRODUCTION_NAVIGATION_COUNTS, type Pro
 import { FilmNodeCard } from "@/film/nodes/film-node-card";
 import { describeFilmConnection } from "@/film/domain/edge-contract";
 import { resolveFilmNode } from "@/film/domain/film-node-resolver";
-import { isFilmProductionProjection } from "@/film/domain/node-projection";
+import { isFilmGenerationResultMediaProjection, isFilmProductionProjection } from "@/film/domain/node-projection";
 import { formatFilmSceneTitle, hasFilmSceneProjection } from "@/film/domain/scene-projection";
 import { CanvasProjectAssetModal } from "@/components/canvas/canvas-project-asset-modal";
 import { CanvasCharacterReferenceNodeContent } from "@/components/canvas/canvas-character-reference-node";
@@ -93,6 +93,7 @@ import { useCanvasActiveTasks } from "./use-canvas-active-tasks";
 import { useCanvasStyleWorkflow } from "./use-canvas-style-workflow";
 import { useCanvasDirector } from "./use-canvas-director";
 import { useCanvasGeneration } from "./use-canvas-generation";
+import { useFilmGenerationResultProjection } from "./use-film-generation-result-projection";
 import { useCanvasGenerationBatches } from "./use-canvas-generation-batches";
 import { useCanvasGenerationExecutor } from "./use-canvas-generation-executor";
 import { useCanvasGenerationRetry } from "./use-canvas-generation-retry";
@@ -348,6 +349,7 @@ function InfiniteCanvasPage() {
 
     const { bindGenerationTask, cancelNodeTask, confirmStopGeneration, finishGenerationRequest, openNodeTaskDetails, runningNodeId, setRunningNodeId, setTaskDetail, startGenerationRequest, taskDetail, taskDetailLoading, taskDetailLogs } =
         useCanvasGeneration({ projectId, domainProjectId: linkedProjectId, projectLoaded, nodes, nodesRef, setNodes });
+    useFilmGenerationResultProjection({ projectLoaded, nodes, gridSize, setNodes, setConnections });
 
     useEffect(() => {
         if (!projectLoaded || !["new", "recent", "choose"].includes(searchParams.get("mode") || "")) return;
@@ -1572,7 +1574,7 @@ function InfiniteCanvasPage() {
 
     const renderCanvasNodeContent = useCallback(
         (contentNode: CanvasNodeData) => {
-            if (isFilmProductionProjection(contentNode)) return <FilmNodeCard node={contentNode} project={linkedProjectQuery.data} />;
+            if (isFilmProductionProjection(contentNode) && !isFilmGenerationResultMediaProjection(contentNode)) return <FilmNodeCard node={contentNode} project={linkedProjectQuery.data} />;
             if (contentNode.metadata?.workflowKind === "character" && contentNode.metadata.characterAssetId) {
                 return <CanvasCharacterReferenceNodeContent node={contentNode} />;
             }
@@ -2450,7 +2452,7 @@ function InfiniteCanvasPage() {
                         <CanvasLocalAgentPanel headless snapshot={agentSnapshot} canUndoOps={canUndoAgentOps} undoOpsCount={agentUndoCount} onApplyOps={applyAgentOps} onUndoOps={undoAgentOps} autoConnect={codexAutoConnect} />
                     ) : null}
                 </section>
-                {!focusMode ? <FilmInspector node={selectedFilmNode} project={linkedProjectQuery.data} activeSection={productionSection} onProjectChanged={refetchLinkedProject} onProjectionChanged={handleFilmProjectionChanged} /> : null}
+                {!focusMode ? <FilmInspector node={selectedFilmNode} project={linkedProjectQuery.data} canvasId={projectId} activeSection={productionSection} onProjectChanged={refetchLinkedProject} onProjectionChanged={handleFilmProjectionChanged} /> : null}
             </main>
         </>
     );

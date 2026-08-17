@@ -2,7 +2,7 @@
 
 ## Status
 
-Implemented as a versioned Film production fact plus a server-owned, revision-safe **single-route atomic Task submission and execution-fact persistence** boundary. The worktree now defines `GenerationAttempt`, `ProviderJob` and Film-aware `Result` registration, but this document does **not** claim a successful real Provider call, real media, QC, end-user Retry UI, browser submit UI, Agent Runtime, or executed acceptance tests for the current changes.
+Implemented as a versioned Film production fact plus a server-owned, revision-safe **single-route atomic Task submission and execution-fact persistence** boundary. The worktree now defines `GenerationAttempt`, `ProviderJob`, Film-aware `Result` registration and an explicit cost-confirmed browser submission flow. Scene-linked Prompt Packs are compiled server-side from an exact PASS spatial Pack/Gate projection, and the scene node exposes a manual structured Scene Asset Pack editor; this document still does **not** claim automatic Production Breakdown → SceneManifest generation, automated Missing View detection, end-user Retry/QC UI, Agent Runtime, or production acceptance for provider media quality.
 
 ## Boundary
 
@@ -12,13 +12,14 @@ Implemented as a versioned Film production fact plus a server-owned, revision-sa
 Prompt Pack (immutable version)
         ↓
 Generation Request (immutable version)
+        ↓ scene-scoped requests require latest Spatial Continuity Gate = PASS
         ↓
 Task Draft (read-only, no Task row)
         ↓
 Provider Route Catalog (read-only)
         ↓
 Atomic Provider Gateway submit → queued Task + queued GenerationAttempt + billing + Canvas Patch
-        ↓  existing asynchronous Worker; not accepted here against a real provider
+        ↓ existing asynchronous Worker; controlled image acceptance completed, video remains untested
 Worker claim → running GenerationAttempt
         ↓
 Provider observation → ProviderJob
@@ -72,7 +73,11 @@ Every Generation Request records `SourceRefs` containing:
 
 1. the current Shot Contract, when present;
 2. the authoritative Prompt Pack Artifact; and
-3. every linked Shot AssetVersion.
+3. every linked Shot AssetVersion;
+4. the latest Scene Asset Pack, when the Shot belongs to a Scene; and
+5. its latest Spatial Continuity Gate, when present.
+
+For a request associated with a Scene, the Task Draft additionally resolves the latest `scene_asset_pack` and matching `spatial_continuity_gate`, appends both exact Artifact IDs to the Gateway source refs, and freezes their IDs and versions in the draft. This derived submission provenance does not rewrite the immutable Generation Request row.
 
 The service rejects credential-shaped fields such as API keys, secrets, credentials, authorization headers, tokens, passwords, and provider keys. Provider configuration remains in backend secret/channel configuration only.
 
@@ -82,7 +87,7 @@ The Production Canvas exposes a **生成请求** menu action only after the user
 
 The Inspector allows the user to edit output settings and intentionally refresh the frozen prompt snapshot. Saving creates a new Artifact version and advances the Project revision; it does not submit a Provider task.
 
-The Generation Request Inspector also records an explicit request status: `draft`, `review`, `ready`, or `locked`. Only `ready` and `locked` may be submitted. Changing status or loading the route catalog still performs no submission; the current UI intentionally has no submit action yet.
+The Generation Request Inspector also records an explicit request status: `draft`, `review`, `ready`, or `locked`. Only `ready` and `locked` may be submitted. Changing status or loading the route catalog performs no submission; submission remains an explicit cost-confirmed action in the Execution tab.
 
 ### Server-owned Task projection Patch
 
@@ -100,6 +105,21 @@ On Canvas read, the service overlays `domainRef.taskId` only when the Canvas is 
 
 The standalone binding method remains server-only and accepts an already-created Task only after it validates that the request is `ready` or `locked`, the Canvas/project relationship, exact request version, node target, Task type/operation and Task input provenance. There is no public client route for assigning an arbitrary Task ID. The public gateway submit route does not call this standalone method: it creates Task, optional billing reservation and Patch inside one repository transaction.
 
+### Browser immediate video projection
+
+When a visible Film `generation` node has a server-owned Task binding, the browser may poll that Task for display only. A succeeded `canvas_video` Task with a playable video result immediately creates or refreshes the stable canvas node:
+
+```text
+generation node
+        ↓ derivation
+film-generation-result:<taskId> (Video player)
+```
+
+- The source node is read from the immutable Task input (`canvasNodeId`), not inferred from a possibly stale polling binding. If the recorded source node no longer exists, the browser creates no result projection or replacement edge and removes only the matching system-generated orphan edge.
+- The immediate node carries media display data, its Canvas provenance and the Task ID only. It never fabricates `GenerationAttempt`, `ProviderJob`, `Result`, or `Resource` identities from a URL or storage key.
+- Reusing the stable node ID preserves user-controlled title, position, dimensions, parent and layout. A subsequent server read remains authoritative for media URL and execution facts through the Canvas Projection Patch.
+- This is a display-latency improvement, not provider acceptance proof. It does not submit work, reserve credits, alter billing, or replace the required real-video acceptance checks.
+
 ## Task Draft contract
 
 The read-only endpoint is:
@@ -114,8 +134,10 @@ It returns a provider-independent contract built from the **exact** Artifact ID 
 - `operation`: `film_generation`;
 - the frozen compiled prompt, output intent, aspect ratio and video duration;
 - Generation Request / Prompt Pack version IDs and recorded `SourceRefs`;
+- for scene-linked requests, the read-only `lockedSceneAssetPack` projection, selected `cameraAnchorId` / `viewId`, and exact Pack/Gate versions;
 - a deterministic request fingerprint for future idempotency checks; and
 - `requestReady`, `submissionState`, `blockers`, and `submissionAllowed`.
+- `spatialGateReady`, the current Gate result, and the exact Pack/Gate Artifact IDs and versions for scene-scoped requests.
 
 The draft still reports `providerRouteResolved: false` and `submissionAllowed: false`, because it is only a read operation and no route has been selected in that request. It intentionally does **not** create a `Task`, a billing order, a ProviderJob, a Result, or a Task ID. Submission is a separate authenticated operation so reading the Inspector can never incur cost.
 
@@ -151,6 +173,12 @@ Selected route locked/revalidated in transaction → Task + billing + Canvas pro
 
 Route discovery is not task submission. It performs no Provider request, creates no Task or billing order, and never writes `DomainRef.taskId`. It also requires the requested video duration to be whole seconds before a future task-runtime submission, because the current queued-video protocol accepts integral seconds.
 
+### Administrative channel catalog sync
+
+An administrator may refresh a system-channel catalog without exposing its stored credential to the browser. Discovery merges the standard OpenAI-style `/models` response with a gateway `/health` response when it exposes `defaults.videoProviders`; either usable endpoint is enough for discovery. Health metadata may populate video duration, ratio and resolution capability, but upstream `pointsCost` is never treated as a user-facing price.
+
+Every newly discovered model starts disabled, unpriced and at zero price. It cannot appear as a billable route until an administrator explicitly saves its protocol/capability configuration, pricing and enabled state. Refreshing the catalog never overwrites those administrator-controlled values on an existing model, and ordinary users cannot select a personal channel in this flow.
+
 The route catalog is intentionally separated from submission. Discovery never spends credits. It also runs the same request-specific capability preparation used by submission, so a model that cannot satisfy the current画幅、时长或生成模式 is not marked ready.
 
 ## Atomic Task submission
@@ -181,12 +209,15 @@ Before commit, the service and repository enforce all of the following:
 2. the Canvas is still linked to the Project and the unique node still targets that exact Artifact version;
 3. the system channel/model is enabled, authorized, server-configured, price-configured and supports the request;
 4. current Project, Canvas payload, Artifact, channel execution fields, model protocol, capability version and price snapshot still match the server-resolved rows under transaction locks;
-5. active-task and storage quotas pass; and
-6. credit reservation, queued `Task`, queued initial `GenerationAttempt` and `CanvasProjectionPatch` creation/update all commit in one transaction.
+5. a scene-scoped request still has the exact `PASS` Gate, and that Gate still points to the latest Pack Artifact ID/version;
+6. active-task and storage quotas pass; and
+7. credit reservation, queued `Task`, queued initial `GenerationAttempt` and `CanvasProjectionPatch` creation/update all commit in one transaction.
 
 If any step fails, no Task, billing order, credit ledger reservation or Patch is committed. Retrying the same Canvas node and exact request version returns the already-bound Task and does not reserve credits again. A different request version cannot replace a still queued/running Task on that node.
 
-The persisted Task contains only `channelId`, model key, normalized non-secret runtime options and an auditable route/version snapshot. Worker execution resolves the current backend channel endpoint and credentials again from system-channel storage. It rejects a queued task if the bound channel-model protocol or capability version changed. Once the transaction commits, an active Worker may claim the Task and call the selected provider, so clients must treat this POST as a potentially billable action. No POST or real Provider call was performed as part of this implementation pass.
+The persisted Task contains only `channelId`, model key, normalized non-secret runtime options and an auditable route/version snapshot. `Task.domainProjectId` and `Task.canvasId` are the explicit ownership fields for Film execution; legacy `Task.projectId` remains only for backward-compatible clients and must not be used to infer both identities. Worker execution resolves the current backend channel endpoint and credentials again from system-channel storage. It rejects a queued task if the bound channel-model protocol or capability version changed. Once the transaction commits, an active Worker may claim the Task and call the selected provider, so clients must treat this POST as a potentially billable action. Controlled `gpt-image-2` acceptance calls have completed; video has not been tested.
+
+Project deletion is rejected while the project owns a queued/running Task, a queued/running/uncertain GenerationAttempt, or a non-terminal/uncertain ProviderJob. This prevents deletion of the immutable request facts while an upstream call or billing outcome may still be active.
 
 ## Execution fact chain
 
@@ -222,4 +253,4 @@ It verifies current-user ownership of the short-drama Project and requested Gene
 
 ## Next boundary
 
-The next Film Phase 5 slice should expose the already-defined submission and execution history through an explicit Inspector cost-confirmation flow, then perform a controlled single-provider acceptance against non-production test inputs. It must show queued/running/uncertain/failed states honestly, must not auto-submit on Inspector read, and must not treat a URL-shaped fixture as real media proof. QC/Retry UI and additional providers remain later boundaries.
+The structured scene-asset editor and Gate issue display now exist, but the next Film slice must validate the current spatial/video/catalog worktree end to end, then add automatic `production-breakdown → SceneManifest`, Missing View detection and a real QC/Retry diagnostic executor on top of the existing Gate Issue codes. Reading an Inspector or route catalog must never auto-submit, and a URL-shaped fixture must not be treated as real media proof.

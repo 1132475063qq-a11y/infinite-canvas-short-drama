@@ -1,7 +1,9 @@
 package repository
 
 import (
+	"errors"
 	"testing"
+	"time"
 
 	"infinite-canvas/backend/internal/model"
 
@@ -87,6 +89,38 @@ func TestDeleteProjectRemovesCanvasProjectionPatchesInTransaction(t *testing.T) 
 	}
 }
 
+func TestDeleteProjectRejectsUnsettledFilmGeneration(t *testing.T) {
+	repo, db := newProjectDeletionRepository(t)
+	now := time.Now()
+	project := model.Project{ID: "project-active-generation", UserID: "user-1", Name: "生成中的项目"}
+	canvas := model.CanvasProject{ID: "canvas-active-generation", UserID: project.UserID, ProjectID: project.ID, Title: "生产画布", PayloadJSON: `{}`}
+	task := model.Task{ID: "task-active-generation", UserID: project.UserID, ProjectID: canvas.ID, DomainProjectID: project.ID, CanvasID: canvas.ID, Status: model.TaskStatusRunning, CreatedAt: now, UpdatedAt: now}
+	attempt := model.GenerationAttempt{
+		ID: "attempt-active-generation", UserID: project.UserID, TaskID: task.ID, AttemptNumber: 1,
+		DomainProjectID: project.ID, CanvasID: canvas.ID, CanvasNodeID: "node-1",
+		GenerationRequestArtifactID: "request-1", GenerationRequestArtifactVersion: 1,
+		RequestFingerprint: "fingerprint", ChannelID: "channel-1", ChannelModelID: "channel-model-1",
+		Model: "image-model", Capability: "image", Protocol: "openai-image",
+		Status: model.GenerationAttemptStatusRunning, CreatedAt: now, UpdatedAt: now,
+	}
+	for _, record := range []any{&project, &canvas, &task, &attempt} {
+		if err := db.Create(record).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	if err := repo.DeleteProject(project.UserID, project.ID); !errors.Is(err, ErrProjectHasUnsettledTasks) {
+		t.Fatalf("delete error = %v, want ErrProjectHasUnsettledTasks", err)
+	}
+	var projectCount int64
+	if err := db.Model(&model.Project{}).Where("id = ?", project.ID).Count(&projectCount).Error; err != nil {
+		t.Fatal(err)
+	}
+	if projectCount != 1 {
+		t.Fatalf("blocked deletion must keep the project, got count %d", projectCount)
+	}
+}
+
 func TestDeleteProjectUnitRemovesOnlyUnitScenes(t *testing.T) {
 	repo, db := newProjectDeletionRepository(t)
 	project := model.Project{ID: "project-unit-delete", UserID: "user-1", Name: "章节删除项目"}
@@ -133,6 +167,9 @@ func newProjectDeletionRepository(t *testing.T) (*Repository, *gorm.DB) {
 		&model.WorkflowStepTask{},
 		&model.ProjectAssetLink{},
 		&model.ProjectAssetCandidate{},
+		&model.Task{},
+		&model.GenerationAttempt{},
+		&model.ProviderJob{},
 	); err != nil {
 		t.Fatal(err)
 	}

@@ -27,6 +27,14 @@ type AssetCategory string
 type AssetVersionStatus string
 type WorkflowStatus string
 type WorkflowStepStatus string
+type FilmArtifactScope string
+
+const (
+	FilmArtifactScopeProject FilmArtifactScope = "project"
+	FilmArtifactScopeUnit    FilmArtifactScope = "unit"
+	FilmArtifactScopeScene   FilmArtifactScope = "scene"
+	FilmArtifactScopeShot    FilmArtifactScope = "shot"
+)
 
 const (
 	ProjectTypeShortDrama    = "short-drama"

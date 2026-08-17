@@ -19,8 +19,8 @@ description: 打开影策网页画布并自动连接本地 Canvas Agent。用户
 
 1. 如果当前仓库是影策项目，优先使用当前仓库的 `web/` 前端。
 2. 先检查本地端口归属：如果 `3000`、`3001` 等端口已被占用，必须用 `lsof`/`ps` 或服务输出确认监听进程的工作目录属于当前仓库的 `web/`，不能只因为端口存在就当成本地画布。
-3. 如果已有当前仓库的 Next dev 服务，复用它并记录真实画布地址，例如 `http://localhost:3001`。
-4. 如果没有当前仓库的服务，启动本地画布开发服务，默认在 `web/` 下运行 `bun run dev`；若默认端口被其他项目占用，改用空闲端口启动，例如 `bunx next dev --webpack -H 0.0.0.0 -p <空闲端口>`。不要执行构建或测试。
+3. 如果已有当前仓库的 Vite 开发服务，复用它并记录真实画布地址，例如 `http://localhost:3001`。
+4. 如果没有当前仓库的服务，启动本地画布开发服务，默认在 `web/` 下运行 `bun run dev`；若默认端口被其他项目占用，使用 Vite 的端口参数，例如 `bun run dev -- --port <空闲端口>`。不要执行构建或测试。
 5. 启动本地 Canvas Agent，必须带上第 3/4 步得到的真实画布地址：`CANVAS_URL=<真实画布地址> npx -y @ddcat666/open-ai-canvas-agent`。如果 Agent 已经在运行，则读取 `~/.infinite-canvas/canvas-agent.json` 或启动输出获取 `Local URL` 和 token。
 6. 读取 Agent 输出或配置中的 `Local URL` 和 `Connect token`，不要让用户手动复制。
 7. 不走本地 Agent 的 `/open` 跳转；直接构造并打开最终 URL：`<真实画布地址>/canvas?mode=new&agentUrl=<Local URL>&agentToken=<Connect token>`。

@@ -187,7 +187,11 @@ func (s *Service) RegisterTaskOutput(userID string, projectID string, stepID str
 	if err != nil {
 		return model.WorkflowStepInstance{}, err
 	}
-	if task.ProjectID != projectID {
+	taskProjectID := strings.TrimSpace(task.DomainProjectID)
+	if taskProjectID == "" {
+		taskProjectID = strings.TrimSpace(task.ProjectID)
+	}
+	if taskProjectID != projectID {
 		return model.WorkflowStepInstance{}, BadAuthRequest("任务不属于当前项目")
 	}
 	if task.Status != model.TaskStatusSucceeded {
@@ -265,7 +269,7 @@ func (s *Service) RegisterTaskOutput(userID string, projectID string, stepID str
 }
 
 func (s *Service) RegisterTaskOutputFromTask(task model.Task) error {
-	if strings.TrimSpace(task.ProjectID) == "" || task.Status != model.TaskStatusSucceeded {
+	if (strings.TrimSpace(task.DomainProjectID) == "" && strings.TrimSpace(task.ProjectID) == "") || task.Status != model.TaskStatusSucceeded {
 		return nil
 	}
 	if strings.TrimSpace(task.InputJSON) == "" {
@@ -311,6 +315,9 @@ func (s *Service) RegisterTaskOutputFromTask(task model.Task) error {
 		return nil
 	}
 	projectID := strings.TrimSpace(input.DomainProjectID)
+	if projectID == "" {
+		projectID = strings.TrimSpace(task.DomainProjectID)
+	}
 	if projectID == "" {
 		if _, projectErr := s.repo.ProjectForUser(task.UserID, task.ProjectID); projectErr == nil {
 			projectID = task.ProjectID

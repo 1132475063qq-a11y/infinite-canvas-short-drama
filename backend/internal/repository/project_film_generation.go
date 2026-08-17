@@ -1,6 +1,7 @@
 package repository
 
 import (
+	"encoding/json"
 	"errors"
 	"strings"
 
@@ -33,6 +34,12 @@ type FilmGenerationAtomicCreateInput struct {
 	BillingOrder              *model.BillingOrder
 	Patch                     *model.CanvasProjectionPatch
 	ActiveTaskLimit           int
+	// Scene spatial facts are optional for legacy shot records. When present,
+	// the transaction locks and rechecks the exact PASS gate version so a pack
+	// update between draft and submit cannot slip through (TOCTOU protection).
+	SceneID                    string
+	SpatialGateArtifactID      string
+	SpatialGateArtifactVersion int
 }
 
 type FilmGenerationAtomicCreateResult struct {
@@ -49,7 +56,7 @@ func (r *Repository) CreateFilmGenerationTaskAtomic(input FilmGenerationAtomicCr
 	if input.Task == nil || input.Attempt == nil || input.Patch == nil || strings.TrimSpace(input.UserID) == "" || strings.TrimSpace(input.ProjectID) == "" {
 		return nil, gorm.ErrInvalidData
 	}
-	if input.Task.UserID != input.UserID || input.Patch.UserID != input.UserID || input.Attempt.UserID != input.UserID || input.Task.ProjectID != input.Patch.CanvasID || input.Task.ID != input.Patch.TaskID || input.Attempt.TaskID != input.Task.ID || input.Patch.TargetProjectID != input.ProjectID || input.Attempt.DomainProjectID != input.ProjectID || input.Attempt.CanvasID != input.Patch.CanvasID || input.Attempt.CanvasNodeID != input.Patch.NodeID || input.Patch.TargetArtifactID != input.GenerationRequestArtifact.ID || input.Attempt.GenerationRequestArtifactID != input.GenerationRequestArtifact.ID || input.Patch.TargetArtifactVersion != input.GenerationRequestArtifact.ObjectVersion || input.Attempt.GenerationRequestArtifactVersion != input.GenerationRequestArtifact.ObjectVersion {
+	if input.Task.UserID != input.UserID || input.Patch.UserID != input.UserID || input.Attempt.UserID != input.UserID || input.Task.DomainProjectID != input.ProjectID || input.Task.CanvasID != input.Patch.CanvasID || input.Task.ID != input.Patch.TaskID || input.Attempt.TaskID != input.Task.ID || input.Patch.TargetProjectID != input.ProjectID || input.Attempt.DomainProjectID != input.ProjectID || input.Attempt.CanvasID != input.Patch.CanvasID || input.Attempt.CanvasNodeID != input.Patch.NodeID || input.Patch.TargetArtifactID != input.GenerationRequestArtifact.ID || input.Attempt.GenerationRequestArtifactID != input.GenerationRequestArtifact.ID || input.Patch.TargetArtifactVersion != input.GenerationRequestArtifact.ObjectVersion || input.Attempt.GenerationRequestArtifactVersion != input.GenerationRequestArtifact.ObjectVersion {
 		return nil, gorm.ErrInvalidData
 	}
 	if input.Task.Provider != model.TaskProviderFilmGateway || input.Task.Model != input.ChannelModel.ModelKey || input.Attempt.AttemptNumber != 1 || input.Attempt.Status != model.GenerationAttemptStatusQueued || input.Attempt.ChannelID != input.Channel.ID || input.Attempt.ChannelModelID != input.ChannelModel.ID || input.Attempt.Model != input.ChannelModel.ModelKey || input.Attempt.Capability != input.ChannelModel.Capability || input.Attempt.Protocol != string(input.ChannelModel.Protocol) || input.Attempt.CapabilityVersion != input.ChannelModel.CapabilityVersion || input.Attempt.PriceVersion != input.ChannelModel.PriceVersion {
@@ -86,7 +93,7 @@ func (r *Repository) CreateFilmGenerationTaskAtomic(input FilmGenerationAtomicCr
 			}
 			if sameFilmGenerationTarget(existingPatch, *input.Patch) {
 				var existingAttempt model.GenerationAttempt
-				if err := tx.First(&existingAttempt, "task_id = ? AND attempt_number = ?", existingTask.ID, 1).Error; err != nil || existingAttempt.UserID != input.UserID || existingAttempt.DomainProjectID != input.ProjectID || existingAttempt.CanvasID != existingPatch.CanvasID || existingAttempt.CanvasNodeID != existingPatch.NodeID || existingAttempt.GenerationRequestArtifactID != existingPatch.TargetArtifactID || existingAttempt.GenerationRequestArtifactVersion != existingPatch.TargetArtifactVersion || existingAttempt.RequestFingerprint != input.Attempt.RequestFingerprint {
+				if err := tx.First(&existingAttempt, "task_id = ? AND attempt_number = ?", existingTask.ID, 1).Error; err != nil || existingTask.DomainProjectID != input.ProjectID || existingTask.CanvasID != existingPatch.CanvasID || existingAttempt.UserID != input.UserID || existingAttempt.DomainProjectID != input.ProjectID || existingAttempt.CanvasID != existingPatch.CanvasID || existingAttempt.CanvasNodeID != existingPatch.NodeID || existingAttempt.GenerationRequestArtifactID != existingPatch.TargetArtifactID || existingAttempt.GenerationRequestArtifactVersion != existingPatch.TargetArtifactVersion || existingAttempt.RequestFingerprint != input.Attempt.RequestFingerprint {
 					return ErrFilmGenerationPatchCorrupted
 				}
 				result.Task = existingTask
@@ -161,6 +168,35 @@ func lockFilmGenerationTarget(tx *gorm.DB, input FilmGenerationAtomicCreateInput
 	expected := input.GenerationRequestArtifact
 	if artifact.ArtifactType != "generation_request" || artifact.ObjectVersion != expected.ObjectVersion || artifact.Status != expected.Status || artifact.ShotID != expected.ShotID || artifact.SceneID != expected.SceneID || artifact.UnitID != expected.UnitID || artifact.PayloadJSON != expected.PayloadJSON || artifact.SourceRefsJSON != expected.SourceRefsJSON || (artifact.Status != "ready" && artifact.Status != "locked") {
 		return ErrFilmGenerationTargetChanged
+	}
+	if input.SceneID != "" {
+		if expected.SceneID != input.SceneID || input.SpatialGateArtifactID == "" || input.SpatialGateArtifactVersion < 1 {
+			return ErrFilmGenerationTargetChanged
+		}
+		var scene model.Scene
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&scene, "id = ? AND project_id = ?", input.SceneID, input.ProjectID).Error; err != nil {
+			return ErrFilmGenerationTargetChanged
+		}
+		var gate model.FilmArtifact
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&gate, "id = ? AND project_id = ? AND scope = ? AND scope_id = ? AND artifact_type = ?", input.SpatialGateArtifactID, input.ProjectID, model.FilmArtifactScopeScene, input.SceneID, "spatial_continuity_gate").Error; err != nil {
+			return ErrFilmGenerationTargetChanged
+		}
+		if gate.ObjectVersion != input.SpatialGateArtifactVersion || gate.Status != "ready" {
+			return ErrFilmGenerationTargetChanged
+		}
+		var gatePayload struct {
+			Status              string `json:"status"`
+			PackArtifactID      string `json:"packArtifactId"`
+			PackArtifactVersion int    `json:"packArtifactVersion"`
+			PackVersion         int    `json:"packVersion"`
+		}
+		if err := json.Unmarshal([]byte(gate.PayloadJSON), &gatePayload); err != nil || gatePayload.Status != "PASS" {
+			return ErrFilmGenerationTargetChanged
+		}
+		var latestPack model.FilmArtifact
+		if err := tx.Where("project_id = ? AND scope = ? AND scope_id = ? AND artifact_type = ?", input.ProjectID, model.FilmArtifactScopeScene, input.SceneID, "scene_asset_pack").Order("object_version desc").First(&latestPack).Error; err != nil || (latestPack.Status != "ready" && latestPack.Status != "locked") || gatePayload.PackArtifactID != latestPack.ID || gatePayload.PackArtifactVersion != latestPack.ObjectVersion || gatePayload.PackVersion != latestPack.ObjectVersion {
+			return ErrFilmGenerationTargetChanged
+		}
 	}
 	return nil
 }

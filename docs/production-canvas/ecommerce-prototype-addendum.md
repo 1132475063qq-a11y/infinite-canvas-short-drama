@@ -2,7 +2,7 @@
 
 更新时间：2026-08-13
 状态：`READY FOR PROTOTYPE IMPLEMENTATION`
-适用仓库：`/Users/xiangyuqin/Downloads/infinite-canvas-short-drama`
+适用范围：当前仓库的 Ecommerce Domain。
 
 本次完整聊天记录同步后的两个正式执行文件：
 
@@ -31,7 +31,7 @@ Shared Canvas Core
 
 1. 当前仓库代码、数据库模型、自动测试和真实浏览器证据。
 2. 本附录（仓库内冻结的合并实施边界）。
-3. 原有 Film 规划文档：`/Users/xiangyuqin/Downloads/短剧AI无限画布_Production_Canvas_v2_超详细发展规划.md`。
+3. 仓库外的原有 Film 规划文档（仅作为设计来源）。
 4. Ecommerce Creative Agent Team 合并接管提示词及其审查记录（作为设计来源，不是实现证明）。
 
 当前已验证的 Film 能力、未完成的 Film 能力和 `FilmArtifact` 继续以 `CONTINUE-HERE.md` 为准。Ecommerce 已有 Provider-free Prototype A 的独立 TypeScript 合同、Provider Evaluation 记录合同、Skill 文件种子、独立 `EcommerceArtifact` 持久化 API、项目类型入口和开发面板，覆盖 ProductDNA、CreativeShotPlan、Artifact 版本、ExpectedRelationGraph、Executor、Result Grid 与基础 QA；仍没有 Ecommerce Agent Runtime 或真实生成/QA 闭环。

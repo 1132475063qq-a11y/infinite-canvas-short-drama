@@ -1,4 +1,5 @@
 import { apiClient, request } from "@/services/api/request";
+import type { GenerationTask } from "@/services/api/task-center";
 
 const api = apiClient;
 
@@ -156,6 +157,8 @@ export type FilmArtifact = {
     unitId?: string;
     sceneId?: string;
     shotId?: string;
+    scope?: "project" | "unit" | "scene" | "shot" | string;
+    scopeId?: string;
     artifactType: string;
     objectVersion: number;
     status: string;
@@ -165,6 +168,66 @@ export type FilmArtifact = {
     authorityRefsJson: string;
     createdAt: string;
     updatedAt: string;
+};
+
+export type SceneSpatialGateStatus = "PASS" | "UNCERTAIN" | "FAIL" | "NEEDS_YOU" | string;
+
+export type SceneSpatialIssue = {
+    code: string;
+    severity: string;
+    path?: string;
+    message: string;
+};
+
+export type SceneSpatialGate = {
+    schemaVersion: number;
+    sceneId: string;
+    packArtifactId?: string;
+    packArtifactVersion?: number;
+    packVersion?: number;
+    status: SceneSpatialGateStatus;
+    issues: SceneSpatialIssue[];
+    validatedAt: string;
+    validator: string;
+    legacy: boolean;
+};
+
+export type SceneAssetPackDetail = {
+    packArtifact?: FilmArtifact;
+    gateArtifact?: FilmArtifact;
+    gate: SceneSpatialGate;
+};
+
+export type LockedSceneAssetPackProjection = {
+    schemaVersion: number;
+    sceneId: string;
+    continuityStatus: SceneSpatialGateStatus;
+    packArtifactId: string;
+    packArtifactVersion: number;
+    gateArtifactId: string;
+    gateArtifactVersion: number;
+    cameraAnchorId: string;
+    viewId: string;
+    sceneManifest?: Record<string, unknown>;
+    sceneTopologyGraph?: Record<string, unknown>;
+    spatialFloorPlan?: Record<string, unknown>;
+    fixedAnchors?: Array<Record<string, unknown>>;
+    movableAnchors?: Array<Record<string, unknown>>;
+    cameraAnchor?: Record<string, unknown>;
+    reverseCamera?: Record<string, unknown>;
+    viewpoint?: Record<string, unknown>;
+    masterSceneAsset?: Record<string, unknown>;
+    viewAsset?: Record<string, unknown>;
+    interiorLookCard?: Record<string, unknown>;
+    exteriorLookCard?: Record<string, unknown>;
+    forbiddenChanges?: string[];
+    requiredPaths?: Array<Record<string, unknown>>;
+};
+
+export type SceneAssetPackSaveResult = {
+    packArtifact: FilmArtifact;
+    gateArtifact: FilmArtifact;
+    gate: SceneSpatialGate;
 };
 
 // This is a read-only Provider Gateway contract, not a queued Task. It never
@@ -184,8 +247,17 @@ export type FilmGenerationTaskDraft = {
     providerRouteResolved: boolean;
     submissionAllowed: boolean;
     submissionState: string;
-    blockers: string[];
+    blockers: string[] | null;
     requestFingerprint: string;
+    spatialGateReady: boolean;
+    spatialContinuityGate?: SceneSpatialGate;
+    spatialGateArtifactId?: string;
+    spatialGateArtifactVersion?: number;
+    spatialPackArtifactId?: string;
+    spatialPackArtifactVersion?: number;
+    cameraAnchorId?: string;
+    viewId?: string;
+    spatialContext?: LockedSceneAssetPackProjection;
     gatewayInput: {
         schemaVersion: number;
         mode: "image" | "video" | "audio" | string;
@@ -198,6 +270,13 @@ export type FilmGenerationTaskDraft = {
         promptArtifactId: string;
         promptArtifactVersion: number;
         sourceRefs: string[];
+        spatialPackArtifactId?: string;
+        spatialPackArtifactVersion?: number;
+        spatialGateArtifactId?: string;
+        spatialGateArtifactVersion?: number;
+        cameraAnchorId?: string;
+        viewId?: string;
+        spatialContext?: LockedSceneAssetPackProjection;
     };
 };
 
@@ -217,7 +296,7 @@ export type FilmGenerationProviderRoute = {
     providerReady: boolean;
     billingReady: boolean;
     routeReady: boolean;
-    blockers: string[];
+    blockers: string[] | null;
 };
 
 export type FilmGenerationProviderRouteCatalog = {
@@ -227,7 +306,7 @@ export type FilmGenerationProviderRouteCatalog = {
     mode: "image" | "video" | "audio" | string;
     requestReady: boolean;
     state: string;
-    blockers: string[];
+    blockers: string[] | null;
     requestFingerprint: string;
     routes: FilmGenerationProviderRoute[];
 };
@@ -287,6 +366,19 @@ export type FilmGenerationExecutionHistory = {
     generationRequestArtifactId: string;
     generationRequestArtifactVersion: number;
     attempts: FilmGenerationAttemptExecution[];
+};
+
+export type FilmGenerationTaskSubmission = {
+    schemaVersion: number;
+    generationRequestArtifactId: string;
+    generationRequestArtifactVersion: number;
+    requestFingerprint: string;
+    canvasId: string;
+    canvasNodeId: string;
+    projectionRevision: number;
+    created: boolean;
+    idempotentReplay: boolean;
+    task: GenerationTask;
 };
 
 export type EcommerceArtifact = {
@@ -354,7 +446,6 @@ export type ProjectDetail = {
     shotReferences: ShotAssetReference[];
     assetCandidates: ProjectAssetCandidate[];
 };
-
 
 export function listProjects() {
     return request<{ projects: ProjectSummary[] }>(api.get("/projects"));
@@ -476,6 +567,10 @@ export function getProjectFilmGenerationProviderRoutes(projectId: string, artifa
     return request<{ providerRoutes: FilmGenerationProviderRouteCatalog }>(api.get(`/projects/${encodeURIComponent(projectId)}/film-generation-requests/${encodeURIComponent(artifactId)}/provider-routes`));
 }
 
+export function submitProjectFilmGenerationTask(projectId: string, artifactId: string, input: { canvasId: string; canvasNodeId: string; requestFingerprint: string; channelId: string; model: string }) {
+    return request<{ submission: FilmGenerationTaskSubmission }>(api.post(`/projects/${encodeURIComponent(projectId)}/film-generation-requests/${encodeURIComponent(artifactId)}/tasks`, input));
+}
+
 export function getProjectFilmGenerationExecutions(projectId: string, artifactId: string) {
     return request<{ executionHistory: FilmGenerationExecutionHistory }>(api.get(`/projects/${encodeURIComponent(projectId)}/film-generation-requests/${encodeURIComponent(artifactId)}/executions`));
 }
@@ -504,6 +599,14 @@ export function saveProjectEcommerceArtifact(
 
 export function saveProjectScene(projectId: string, input: { id?: string; unitId?: string; code?: string; title: string; description?: string; interiorExterior?: string; timeOfDay?: string; locationAssetId?: string; position?: number; status?: string }) {
     return request<{ scene: ProjectScene }>(api.post(`/projects/${encodeURIComponent(projectId)}/scenes`, input));
+}
+
+export function getProjectSceneAssetPack(projectId: string, sceneId: string) {
+    return request<{ sceneAssetPack: SceneAssetPackDetail }>(api.get(`/projects/${encodeURIComponent(projectId)}/scenes/${encodeURIComponent(sceneId)}/asset-pack`));
+}
+
+export function saveProjectSceneAssetPack(projectId: string, sceneId: string, input: { status?: string; responsibleAgentId?: string; expectedVersion: number; payload: Record<string, unknown> }) {
+    return request<{ sceneAssetPack: SceneAssetPackSaveResult }>(api.post(`/projects/${encodeURIComponent(projectId)}/scenes/${encodeURIComponent(sceneId)}/asset-pack`, input));
 }
 
 export function replaceProjectUnitShots(projectId: string, unitId: string, shots: Array<{ title: string; description: string; durationMs: number }>) {

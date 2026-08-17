@@ -11,7 +11,7 @@
 - Default development driver: SQLite.
 - Schema authority: `backend/internal/database/schema.go` via `database.Models()` and `database.MigrateSchema()`.
 - Verified local development database: 53 application tables.
-- Recovery copy: `.local/project-workbench-debug/backups/open_ai_canvas-before-storage-v2-20260811-140557.db`.
+- Recovery copy: a Git-ignored local database backup was created before the storage migration.
 
 The SQLite database and its backup are deliberately excluded from Git: they can contain user projects, sessions, and provider configuration. Schema changes must be represented by Go models and migration tests, not committed user data.
 
@@ -47,7 +47,7 @@ Ecommerce reuses the Canvas Core, Project/Asset/Task/Result and Provider boundar
 
 ## Film Generation Request baseline
 
-Film `generation_request` is a versioned `FilmArtifact`, not a mutable task row. It snapshots the current Prompt Pack ID, Prompt Pack version and compiled prompt on the backend, records Shot Contract / Prompt Pack / Shot AssetVersion provenance, and rejects credential-shaped or unowned provider-execution fields. A read-only Task Draft is derived from one exact request version, and a separate read-only Provider Route catalog reveals only redacted matching backend system-channel candidates. An authenticated image/video submit boundary can atomically reserve billing, create one normal queued Task plus its initial queued `GenerationAttempt`, and install the revision-safe server `canvas_projection_patch`; duplicate submission returns the existing binding. Worker claim, attempt-scoped `ProviderJob`, Film-aware `Result`, retry history and read-time Canvas execution IDs now have persistence contracts. The browser document never persists or assigns those runtime IDs, and no provider credential is copied into Task or execution facts. These worktree changes have not been run as tests in the current pass, and no real Provider call, real media, QC, Retry UI or browser submission acceptance is claimed. The complete contract is in [`film-generation-request-contract.md`](./film-generation-request-contract.md).
+Film `generation_request` is a versioned `FilmArtifact`, not a mutable task row. It snapshots the current Prompt Pack ID, Prompt Pack version and compiled prompt on the backend, records Shot Contract / Prompt Pack / Shot AssetVersion provenance, and rejects credential-shaped or unowned provider-execution fields. A read-only Task Draft is derived from one exact request version, and a separate read-only Provider Route catalog reveals only redacted matching backend system-channel candidates. An authenticated image/video submit boundary can atomically reserve billing, create one normal queued Task plus its initial queued `GenerationAttempt`, and install the revision-safe server `canvas_projection_patch`; duplicate submission returns the existing binding. Worker claim, attempt-scoped `ProviderJob`, Film-aware `Result`, retry history and read-time Canvas execution IDs now have persistence contracts. The browser document never persists or assigns those runtime IDs, and no provider credential is copied into Task or execution facts. Controlled image acceptance has been recorded; video, current worktree regression, QC, Retry UI and browser submission acceptance still require the scopes listed in `pending-test.mdx`. The complete contract is in [`film-generation-request-contract.md`](./film-generation-request-contract.md).
 
 ## Golden fixture
 

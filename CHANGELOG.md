@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- 完成文档治理：新增面向协作者的文档索引、功能边界、代码地图、待办与 UI 设计系统规范；清理公开文档中的测试账号、真实任务/媒体标识、个人机器路径和过时上游链接。Ecommerce 明确标注为 Provider-free Prototype A，不将合同代码误报为真实 Agent、Provider 或媒体生成能力。
 - 新增 Film `CanvasProjectionPatch`：服务端 Task 绑定独立于浏览器整份 Canvas 文档，按 Canvas 节点、项目、Generation Request Artifact 和精确版本作为并发保护；读取时才安全叠加 `DomainRef.taskId`，浏览器保存会剥离伪造/旧 Task ID，仍存在的 Canvas 全量替换不会擦除 Patch。该合同不创建 Task、计费单、ProviderJob、Result 或 Provider 调用；未来 Gateway 仍须把 Task、计费事实和 Patch 放进同一事务。
 - 新增 Film `Provider Route Catalog` 只读网关边界：按精确不可变 Generation Request 版本枚举匹配的后端 system-channel 模型，只返回脱敏的协议、能力/计费就绪状态和阻塞原因；Canvas Inspector 可查看候选渠道。该接口不会创建 Task、预扣积分、调用 Provider 或直接回写 `DomainRef.taskId`。真实原子提交仍需在同一事务中创建 Task、计费事实和已具备的 Canvas Projection Patch。
 - 新增 Film `GenerationRequest → Task Draft` 只读合同：后端按精确不可变请求版本返回 provider-independent Gateway 输入、来源、状态/阻塞原因与指纹；Canvas Inspector 可查看合同并显式保存请求为 draft/review/ready/locked。该接口不会创建 Task、计费单、ProviderJob、Result 或前端密钥，真实路由解析和提交仍未实现。

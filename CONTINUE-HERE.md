@@ -1,13 +1,13 @@
 # AI Creative Studio（短剧 + 电商）无限画布：继续开发入口
 
-更新时间：2026-08-13
+更新时间：2026-08-17
 
 ## 1. 先从这里开始
 
 新 Codex 会话必须先完成以下检查，再修改代码：
 
 ```bash
-cd /Users/xiangyuqin/Downloads/infinite-canvas-short-drama
+cd <repository-root>
 git status -sb
 git branch --show-current
 git log -8 --oneline
@@ -19,17 +19,13 @@ git log -8 --oneline
 codex/phase4-film-nodes
 ```
 
-主规划文档：
-
-```text
-/Users/xiangyuqin/Downloads/短剧AI无限画布_Production_Canvas_v2_超详细发展规划.md
-```
+主规划：仓库外的 Film Production Canvas v2 设计文档只作为来源证据；当前实现与验收以仓库内合同、代码和 `pending-test.mdx` 为准。
 
 参考源及使用边界：
 
-- `/Users/xiangyuqin/Downloads/open-ai-canvas-main/`：主工程原始参考；当前仓库是继续开发主体。
-- `/Users/xiangyuqin/Downloads/Infinite-Canvas-main.zip`：只参考 Provider Adapter、异步任务、Polling、WebSocket、Callback，不复制整体架构。
-- `/Users/xiangyuqin/Downloads/影视短剧AgentTeam_v1.3.1_Conflict_Hardened.zip`：只作为 Agent、Skill、Artifact、QC、Retry、LOCKED、Change Request 的影视知识参考；不要直接运行文件模式。
+- 原始主工程参考：当前仓库是继续开发主体。
+- Provider Adapter、异步任务、Polling、WebSocket、Callback 参考归档：只借鉴协议和失败处理，不复制整体架构。
+- 影视 Agent Team 参考归档：只作为 Agent、Skill、Artifact、QC、Retry、LOCKED、Change Request 的知识来源；不要直接运行文件模式。
 
 合并产品的 Ecommerce 实施附录：
 
@@ -37,8 +33,7 @@ codex/phase4-film-nodes
 - `docs/production-canvas/ecommerce-agent-team-v1.2.1-codex-ready.md`：完整架构基准、P0 执行协议和失败/成本/数据边界。
 - `docs/production-canvas/ecommerce-prototype-implementation-spec-v1.0.md`：直接给 Codex 的 Prototype 任务书。
 - `docs/production-canvas/film-generation-request-contract.md`：Film `generation_request` 的版本、来源、安全和 Task 边界。
-- `/Users/xiangyuqin/.codex/attachments/d20d2872-0042-4e42-a1a8-a704ac1014d6/pasted-text.txt`：Ecommerce 合并接管提示词的来源证据；不把其中的设计文字当成已实现能力。
-- `/Users/xiangyuqin/Downloads/电商创意工作台设计.md`：完整 Ecommerce 架构审查聊天记录；已完整读取并将 P0、Benchmark、Provider、Canvas Scope、失败/成本/隐私修正同步到仓库文档。
+- Ecommerce 合并接管提示词和架构审查记录：均为仓库外来源证据；不把其中的设计文字当成已实现能力。
 
 ## 2. 产品边界
 
@@ -160,7 +155,7 @@ web/test/production-ui-shell.test.ts
 - Generation Request 追加 Shot Contract、Prompt Pack 与 Shot AssetVersion 到 SourceRefs；服务端拒绝 API Key、Token、Secret、Credential、Authorization、Password 和 Provider Key 字段。
 - 新增 Prompt Pack → Generation Request typed connection、画布创建入口、专用节点卡、Inspector、显式“载入最新 Prompt Pack”动作和 Shot Pipeline 自动布局。
 - 新增只读 `Generation Request → Task Draft` 合同：后端总是按画布指定的 Artifact ID 读取精确请求版本，编译出 provider-independent `gatewayInput`、来源、指纹和阻塞原因；它不会创建 Task、计费单、ProviderJob、Result 或 `DomainRef.taskId`。
-- Inspector 的 Execution 标签可查看只读任务合同和只读后端渠道候选；Generation Request 可显式保存为 draft / review / ready / locked。只有 ready / locked 可进入未来网关路由等待态，当前仍没有提交按钮。
+- Inspector 的 Execution 标签可查看只读任务合同、后端渠道候选、费用确认、显式提交和只读执行历史；Generation Request 可显式保存为 draft / review / ready / locked。只有 ready / locked 可提交。
 - 新增服务端 `CanvasProjectionPatch`：Task 绑定独立于浏览器整份 `CanvasProject.PayloadJSON`，只在 Canvas 节点仍精确指向同一 Generation Request Artifact 版本时叠加 `taskId`；浏览器保存会剥离伪造/旧的 `taskId`，整份画布替换也不会擦除仍存在 Canvas 的服务器 Patch。
 - 新增单渠道原子提交 API：只接受 Canvas/节点、请求指纹、后端渠道 ID 和模型 key；在同一事务内锁定并复核 Project、Canvas、Generation Request、渠道、能力版本与价格快照，随后原子完成积分预留、标准 `canvas_image` / `canvas_video` Task 和 Projection Patch。
 - 同一节点 + 同一 Generation Request 版本重复提交会返回原 Task，不重复预扣；积分不足、目标变化、路由变化或节点已有活动任务时，Task、账单、积分流水和 Patch 全部回滚。Worker 只能在事务提交后看到 Task。
@@ -169,10 +164,11 @@ web/test/production-ui-shell.test.ts
 - 真实上游任务号现在按 Worker 携带的 Attempt 编号保存为 `ProviderJob`；迟到观察仍归原 Attempt，不能覆盖新 Attempt 的 Task 指针；已确认成功不会被后续噪声轮询降级，已知上游 ID 但没有终态证据的失败会记录为 `uncertain`。
 - 影视 Task 成功、Attempt 成功和 `Result(kind = film_generation_result)` 在同一事务落库；Result 关联精确 Generation Request ID/版本、Task、Attempt 与首个可访问媒体 URL。
 - 新增只读执行历史 API，并在 Canvas 读取时从后端事实表临时投影 `generationAttemptId`、`providerJobId`、`resultId`；浏览器保存会和 `taskId` 一样剥离这些运行时 ID。
-- 当前仍没有前端提交按钮，也没有在本轮调用提交 API 或真实 Provider；尚未产生媒体 Result。
-- 本次新增的 Generation Request、Provider Route Catalog、原子提交、计费回滚、GenerationAttempt、ProviderJob、Film Result、Canvas Projection Patch 合同测试和画布语义测试已写入当前分支；按当前 `AGENTS.md` 的默认验证纪律，本轮未运行测试、typecheck、build 或浏览器实测，不能把代码和测试文件当成运行验收。
+- 登录态浏览器已完成费用确认和显式图片提交，`gpt-image-2` 真实任务、Attempt、ProviderJob、Film Result、Canvas Patch 与积分结算均已验证；人物一致性三张受控图片合计 29/30。视频没有测试。
+- 场景空间资产系统已加入 SceneManifest、Topology、FloorPlan、Anchor、View Coverage、Look Card 和结构化 Gate。Gate 依赖结构事实与人工证据，不是后端自动视觉识别。
+- 空间 Pack 保存现在要求 `expectedVersion`，过期页面返回冲突；删除领域项目会拦截活动或状态待核对的执行；Film Task 使用显式 `domainProjectId` / `canvasId`，旧数据由 Attempt 回填。
 
-尚未完成：前端费用确认与提交/历史交互、真实单 Provider 接受测试、真实媒体结果、QC/Retry UI，以及《寄生广告》数据库 Golden Project。
+尚未完成：视频 Provider 验收、自动视觉 QC、端用户 Retry/QC UI、跨 Scene 的项目级 Location/开口连续性，以及《寄生广告》数据库 Golden Project。
 
 ### Ecommerce Creative Studio：Prototype A Provider-free 合同阶段
 
@@ -255,7 +251,7 @@ Phase 3 验证（2026-08-12）：
 - `git diff --check`：通过。
 - 浏览器实测：1920×1080、1440×900、1280×720 均无页面级横向或纵向溢出；左侧 15 项导航、顶部状态、底部 Shot Strip、右侧 Inspector 正常显示。
 - 浏览器交互：点击 Shot Strip 可选中真实 Shot Projection，导航同步到“镜头”，Inspector 显示 Shot ID、Scene ID、状态与 Evidence；Camera Tab 可切换。
-- 当前机器的 `localhost:3000` 被 `/Users/xiangyuqin/Desktop/Infinite-Canvas-main` 占用，本阶段用 `http://localhost:3001` 验收当前仓库；不要把 3000 的旧页面误当成本分支。
+- 历史验收时 `localhost:3000` 被另一份 checkout 占用，因此使用 `http://localhost:3001`；不要把其他本地页面误当成本分支。
 - 本阶段页面没有新增运行错误；控制台只观察到已有 Ant Design Modal deprecated warning。
 
 Phase 4 第一批验证（2026-08-12）：
@@ -280,7 +276,7 @@ Phase 4 Acting / Prompt Pack 验证（2026-08-13）：
 常用验证命令：
 
 ```bash
-cd /Users/xiangyuqin/Downloads/infinite-canvas-short-drama/web
+cd <repository-root>/web
 bun run test
 bun run typecheck
 bun run build
@@ -289,7 +285,7 @@ bun run build
 开发环境启动：
 
 ```bash
-cd /Users/xiangyuqin/Downloads/infinite-canvas-short-drama
+cd <repository-root>
 LOCAL_UID=$(id -u) LOCAL_GID=$(id -g) docker compose -f docker-compose.dev.yml up --build
 ```
 
@@ -400,9 +396,9 @@ Ecommerce 下一步只做：
 ```text
 请先完整读取 CONTINUE-HERE.md、
 docs/production-canvas/ecommerce-prototype-addendum.md 和
-/Users/xiangyuqin/Downloads/短剧AI无限画布_Production_Canvas_v2_超详细发展规划.md。
+当前环境可用的仓库外 Film 主规划（仅作为设计来源）。
 检查当前分支、Git 状态和最近提交，不要重做 Phase 1/Phase 2。
 Film Phase 3 已完成并通过 78/78 自动测试与三档浏览器验收，不要重做。
 Phase 4 已完成 Scene、Shot、Character、Location、Prop、Acting、Prompt Pack、Generation Request、只读 Task Draft、只读 Provider Route Catalog、revision-safe Canvas Projection Patch，以及图片/视频单渠道原子 Task 提交边界。
-Phase 5 的 GenerationAttempt / ProviderJob / Film Result 数据合同、事务写入、Retry 历史、只读执行 API 和 Canvas 运行时投影已写入当前分支，但当前变化尚未运行测试、构建或浏览器验收。Film 下一步先做针对性验证，再实现费用确认后的显式提交与执行历史 UI，然后做一个受控单 Provider 接受测试；不直接接入多家 Provider。Ecommerce 已完成 Prototype A 无 Provider 合同骨架和 Provider Evaluation 记录合同，下一步只在用户提供真实渠道/素材后执行 Bake-off。两条线都不要提前接入 Full Ecommerce V1 或复杂 Agent Runtime。
+Phase 5 的 GenerationAttempt / ProviderJob / Film Result 数据合同、事务写入、Retry 历史、只读执行 API、Canvas 运行时投影和费用确认提交 UI 已写入当前分支；受控图片接受测试已完成，但本次空间、视频投影与渠道目录改动仍需针对性验证，视频尚未验收。Film 下一步先完成这些回归，再做端用户 Retry/QC UI、跨 Scene 连续性与数据库 Golden Project；不直接接入多家 Provider。Ecommerce 已完成 Prototype A 无 Provider 合同骨架和 Provider Evaluation 记录合同，下一步只在用户提供真实渠道/素材后执行 Bake-off。两条线都不要提前接入 Full Ecommerce V1 或复杂 Agent Runtime。
 ```

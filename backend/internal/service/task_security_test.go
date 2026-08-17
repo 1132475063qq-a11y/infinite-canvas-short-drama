@@ -1,6 +1,8 @@
 package service
 
 import (
+	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 
@@ -74,6 +76,157 @@ func TestTaskInputRejectsInlineMedia(t *testing.T) {
 	if !containsInlineMediaDataURL(input) {
 		t.Fatal("containsInlineMediaDataURL() = false")
 	}
+}
+
+func TestCreateTaskRejectsCustomProviderByDefault(t *testing.T) {
+	svc, _ := newTaskChannelPolicyTestService(t)
+
+	_, err := svc.CreateTask("user-1", CreateTaskRequest{
+		Prompt: "test",
+		Type:   "canvas_image_text_to_image",
+		Input: map[string]any{
+			"mode": "image",
+			"config": map[string]any{
+				"baseUrl": "https://provider.example/v1",
+				"apiKey":  "user-key",
+				"model":   "image-model",
+			},
+		},
+	})
+	var authErr *AuthError
+	if !errors.As(err, &authErr) || authErr.Status != 403 {
+		t.Fatalf("CreateTask() error = %#v, want 403", err)
+	}
+}
+
+func TestCreateTaskAllowsCustomProviderWhenEnabled(t *testing.T) {
+	svc, _ := newTaskChannelPolicyTestService(t)
+	actor := &model.User{ID: "admin-1", Role: model.UserRoleAdmin}
+	if _, err := svc.UpdateFeatureAvailability(actor, FeatureAvailability{
+		ShortDramaEnabled: true, TaskCenterEnabled: true, CreditsEnabled: true, CustomChannelsEnabled: true,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	task, err := svc.CreateTask("user-1", CreateTaskRequest{
+		Prompt: "test",
+		Type:   "canvas_image_text_to_image",
+		Input: map[string]any{
+			"mode": "image",
+			"config": map[string]any{
+				"baseUrl": "https://provider.example/v1",
+				"apiKey":  "user-key",
+				"model":   "image-model",
+			},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if task == nil || task.Status != model.TaskStatusQueued {
+		t.Fatalf("CreateTask() = %#v", task)
+	}
+}
+
+func TestCreateTaskAllowsManagedSystemChannelByDefault(t *testing.T) {
+	svc, db := newTaskChannelPolicyTestService(t)
+	actor := &model.User{ID: "admin-1", Role: model.UserRoleAdmin}
+	if _, err := svc.UpdateFeatureAvailability(actor, FeatureAvailability{
+		ShortDramaEnabled: true, TaskCenterEnabled: true, CreditsEnabled: false, CustomChannelsEnabled: false,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	channel := model.ModelChannel{
+		ID: "channel-1", Scope: model.ChannelScopeSystem, Enabled: true, Name: "managed",
+		BaseURL: "https://provider.example/v1", APIKey: "system-key", APIFormat: "openai", ModelsJSON: `["image-model"]`,
+	}
+	channelModel := model.ChannelModel{
+		ID: "model-1", ChannelID: channel.ID, ModelKey: "image-model", Capability: "image",
+		Protocol: model.ChannelInterfaceOpenAIImage, BillingMode: "fixed_request", PriceConfigured: true, Enabled: true,
+	}
+	if err := db.Create(&channel).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Create(&channelModel).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	task, err := svc.CreateTask("user-1", CreateTaskRequest{
+		Prompt: "test",
+		Type:   "canvas_image_text_to_image",
+		Input: map[string]any{
+			"mode":   "image",
+			"config": map[string]any{"channelId": channel.ID, "model": channelModel.ModelKey},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if task == nil || task.Status != model.TaskStatusQueued {
+		t.Fatalf("CreateTask() = %#v", task)
+	}
+}
+
+func TestResolveProviderConfigRejectsCustomProviderByDefault(t *testing.T) {
+	svc, _ := newTaskChannelPolicyTestService(t)
+
+	_, err := svc.resolveProviderConfig(providerConfig{
+		BaseURL: "https://provider.example/v1",
+		APIKey:  "user-key",
+		Model:   "image-model",
+	})
+	var authErr *AuthError
+	if !errors.As(err, &authErr) || authErr.Status != 403 {
+		t.Fatalf("resolveProviderConfig() error = %#v, want 403", err)
+	}
+}
+
+func TestRetryTaskRejectsLegacyCustomProviderByDefault(t *testing.T) {
+	svc, db := newTaskChannelPolicyTestService(t)
+	input := map[string]any{
+		"mode": "image",
+		"config": map[string]any{
+			"baseUrl": "https://provider.example/v1",
+			"apiKey":  "legacy-user-key",
+			"model":   "image-model",
+		},
+	}
+	if err := svc.protectTaskSecrets(input); err != nil {
+		t.Fatal(err)
+	}
+	encoded, err := json.Marshal(input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	task := model.Task{ID: "task-legacy", UserID: "user-1", Type: "canvas_image_text_to_image", Status: model.TaskStatusFailed, Prompt: "test", InputJSON: string(encoded)}
+	if err := db.Create(&task).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = svc.RetryTask(task.UserID, task.ID)
+	var authErr *AuthError
+	if !errors.As(err, &authErr) || authErr.Status != 403 {
+		t.Fatalf("RetryTask() error = %#v, want 403", err)
+	}
+}
+
+func newTaskChannelPolicyTestService(t *testing.T) (*Service, *gorm.DB) {
+	t.Helper()
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sqlDB, err := db.DB(); err == nil {
+		sqlDB.SetMaxOpenConns(1)
+	}
+	if err := db.AutoMigrate(
+		&model.SystemSetting{}, &model.AdminAuditEvent{}, &model.ModelChannel{}, &model.ChannelModel{},
+		&model.Asset{}, &model.CanvasProject{}, &model.Session{}, &model.Message{}, &model.Task{},
+		&model.TaskLog{}, &model.Result{}, &model.ApiCallLog{}, &model.TaskTextDelta{},
+	); err != nil {
+		t.Fatal(err)
+	}
+	return New(repository.New(db), t.TempDir()), db
 }
 
 func TestCreateSessionRemovesDraftWhenTaskCreationFails(t *testing.T) {

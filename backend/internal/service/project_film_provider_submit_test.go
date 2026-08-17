@@ -222,7 +222,7 @@ func TestFilmGenerationExecutionFactsFollowClaimProviderAndSuccess(t *testing.T)
 	if err := fixture.service.LogAPICall(model.ApiCallLog{
 		UserID: fixture.project.UserID, TaskID: claimed.ID, BillingOrderID: claimed.BillingOrderID,
 		AttemptNumber: claimed.Attempts,
-		ChannelID: fixture.channel.ID, Capability: "video", RequestKind: "create", Model: fixture.model.ModelKey,
+		ChannelID:     fixture.channel.ID, Capability: "video", RequestKind: "create", Model: fixture.model.ModelKey,
 		Status: model.ApiCallStatusSucceeded, ProviderStatus: "queued", ProviderRequestID: "provider-job-success",
 		CreatedAt: providerObservedAt,
 	}); err != nil {
@@ -274,6 +274,20 @@ func TestFilmGenerationExecutionFactsFollowClaimProviderAndSuccess(t *testing.T)
 	domainRef, _ := node["domainRef"].(map[string]any)
 	if domainRef["taskId"] != claimed.ID || domainRef["generationAttemptId"] != attempt.ID || domainRef["providerJobId"] != providerJob.ID || domainRef["resultId"] != result.ID {
 		t.Fatalf("runtime projection is missing execution facts: %#v", domainRef)
+	}
+	var resultPatch model.CanvasProjectionPatch
+	if err := fixture.db.First(&resultPatch, "user_id = ? AND canvas_id = ? AND task_id = ? AND patch_kind = ?", fixture.project.UserID, fixture.canvas.ID, claimed.ID, model.CanvasProjectionPatchKindFilmGenerationResult).Error; err != nil {
+		t.Fatalf("successful Film task did not create a Result projection patch: %v", err)
+	}
+	if resultPatch.NodeID != model.FilmGenerationResultCanvasNodeID(claimed.ID) {
+		t.Fatalf("unexpected Result projection node ID: %#v", resultPatch)
+	}
+	resultNode, err := canvasProjectionNodeByID(runtimeCanvas, resultPatch.NodeID)
+	if err != nil {
+		t.Fatalf("runtime Canvas is missing the derived video Result node: %v", err)
+	}
+	if resultNode["type"] != "video" || resultNode["filmKind"] != "result" {
+		t.Fatalf("derived Result node is not a video projection: %#v", resultNode)
 	}
 }
 

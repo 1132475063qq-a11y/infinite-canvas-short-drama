@@ -9,7 +9,10 @@ import (
 	"infinite-canvas/backend/internal/model"
 )
 
-const CanvasProjectionPatchKindFilmGenerationTask = "film_generation_task"
+const (
+	CanvasProjectionPatchKindFilmGenerationTask   = model.CanvasProjectionPatchKindFilmGenerationTask
+	CanvasProjectionPatchKindFilmGenerationResult = model.CanvasProjectionPatchKindFilmGenerationResult
+)
 
 // BindFilmGenerationTaskCanvasProjectionRequest is the future Provider
 // Gateway's final projection input. The binding is intentionally narrower
@@ -85,7 +88,7 @@ func (s *Service) BindFilmGenerationTaskCanvasProjection(userID string, req Bind
 }
 
 func validateFilmGenerationProjectionTask(task *model.Task, canvasID string, nodeID string, draft FilmGenerationTaskDraft) error {
-	if task.ProjectID != canvasID {
+	if task.CanvasID != canvasID || task.DomainProjectID != draft.ProjectID {
 		return BadAuthRequest("Task 不属于当前画布，拒绝绑定")
 	}
 	if task.Type != draft.TaskType || task.Operation != draft.Operation {
@@ -141,29 +144,46 @@ func applyCanvasProjectionPatches(raw json.RawMessage, patches []model.CanvasPro
 	}
 	changed := false
 	currentProjectID := strings.TrimSpace(canvasProjectID)
+	connections, _ := payload["connections"].([]any)
 	for _, patch := range patches {
-		if patch.PatchKind != CanvasProjectionPatchKindFilmGenerationTask || strings.TrimSpace(patch.TaskID) == "" {
+		if strings.TrimSpace(patch.TaskID) == "" || currentProjectID == "" || currentProjectID != strings.TrimSpace(patch.TargetProjectID) {
 			continue
 		}
-		if currentProjectID == "" || currentProjectID != strings.TrimSpace(patch.TargetProjectID) {
+		generationNode, unique := uniqueCanvasProjectionNode(nodes, patch.NodeID)
+		if !unique || !canvasGenerationNodeMatchesTarget(generationNode, patch.TargetProjectID, patch.TargetArtifactID, patch.TargetArtifactVersion) {
 			continue
 		}
-		node, unique := uniqueCanvasProjectionNode(nodes, patch.NodeID)
-		if !unique || !canvasGenerationNodeMatchesTarget(node, patch.TargetProjectID, patch.TargetArtifactID, patch.TargetArtifactVersion) {
-			continue
+		switch patch.PatchKind {
+		case CanvasProjectionPatchKindFilmGenerationTask:
+			domainRef, _ := generationNode["domainRef"].(map[string]any)
+			applyCanvasProjectionExecutionFacts(domainRef, patch)
+			changed = true
+		case CanvasProjectionPatchKindFilmGenerationResult:
+			media, available := canvasProjectionVideoMediaFromPatch(patch)
+			if !available {
+				continue
+			}
+			resultNodeID := model.FilmGenerationResultCanvasNodeID(patch.TaskID)
+			resultNode, found := uniqueCanvasProjectionNode(nodes, resultNodeID)
+			canonical := canonicalFilmGenerationResultNode(resultNode, generationNode, resultNodeID, patch, media)
+			if found {
+				for index, node := range nodes {
+					if canvasProjectionString(nodeMap(node)["id"]) == resultNodeID {
+						nodes[index] = canonical
+						break
+					}
+				}
+			} else {
+				nodes = append(nodes, canonical)
+				payload["nodes"] = nodes
+			}
+			var connectionChanged bool
+			connections, connectionChanged = ensureFilmGenerationResultConnection(connections, patch.TaskID, patch.NodeID, resultNodeID)
+			if connectionChanged {
+				payload["connections"] = connections
+			}
+			changed = true
 		}
-		domainRef, _ := node["domainRef"].(map[string]any)
-		domainRef["taskId"] = patch.TaskID
-		if patch.GenerationAttemptID != "" {
-			domainRef["generationAttemptId"] = patch.GenerationAttemptID
-		}
-		if patch.ProviderJobID != "" {
-			domainRef["providerJobId"] = patch.ProviderJobID
-		}
-		if patch.ResultID != "" {
-			domainRef["resultId"] = patch.ResultID
-		}
-		changed = true
 	}
 	if !changed {
 		return base, nil
@@ -194,16 +214,28 @@ func stripClientFilmGenerationTaskClaims(raw json.RawMessage) (json.RawMessage, 
 	changed := false
 	for _, value := range nodes {
 		node, ok := value.(map[string]any)
-		if !ok || canvasProjectionString(node["filmKind"]) != "generation" {
-			continue
-		}
-		domainRef, ok := node["domainRef"].(map[string]any)
 		if !ok {
 			continue
 		}
-		for _, field := range []string{"taskId", "generationAttemptId", "providerJobId", "resultId"} {
-			if _, exists := domainRef[field]; exists {
-				delete(domainRef, field)
+		domainRef, ok := node["domainRef"].(map[string]any)
+		if ok && (canvasProjectionString(node["filmKind"]) == "generation" || canvasProjectionString(node["filmKind"]) == "result") {
+			for _, field := range []string{"taskId", "generationAttemptId", "providerJobId", "resultId", "resourceId"} {
+				if _, exists := domainRef[field]; exists {
+					delete(domainRef, field)
+					changed = true
+				}
+			}
+		}
+		if canvasProjectionString(node["filmKind"]) != "result" {
+			continue
+		}
+		metadata, ok := node["metadata"].(map[string]any)
+		if !ok {
+			continue
+		}
+		for _, field := range []string{"content", "storageKey", "mimeType", "bytes", "naturalWidth", "naturalHeight", "durationMs", "taskId", "taskStatus", "taskProgress", "taskStage", "taskCreatedAt", "taskUpdatedAt"} {
+			if _, exists := metadata[field]; exists {
+				delete(metadata, field)
 				changed = true
 			}
 		}
@@ -285,4 +317,301 @@ func canvasProjectionInt(value any) (int, bool) {
 	default:
 		return 0, false
 	}
+}
+
+type canvasProjectionVideoMedia struct {
+	URL        string
+	StorageKey string
+	ResourceID string
+	MimeType   string
+	Width      int
+	Height     int
+	Bytes      int64
+	DurationMS int64
+}
+
+func applyCanvasProjectionExecutionFacts(domainRef map[string]any, patch model.CanvasProjectionPatch) {
+	domainRef["taskId"] = patch.TaskID
+	if patch.GenerationAttemptID != "" {
+		domainRef["generationAttemptId"] = patch.GenerationAttemptID
+	}
+	if patch.ProviderJobID != "" {
+		domainRef["providerJobId"] = patch.ProviderJobID
+	}
+	if patch.ResultID != "" {
+		domainRef["resultId"] = patch.ResultID
+	}
+}
+
+func canvasProjectionVideoMediaFromPatch(patch model.CanvasProjectionPatch) (canvasProjectionVideoMedia, bool) {
+	media := canvasProjectionVideoMedia{URL: strings.TrimSpace(patch.ResultURL)}
+	if raw := strings.TrimSpace(patch.ResultPayload); raw != "" {
+		var payload map[string]any
+		if json.Unmarshal([]byte(raw), &payload) == nil {
+			candidate := payload
+			if video, ok := payload["video"].(map[string]any); ok {
+				candidate = video
+			}
+			if media.URL == "" {
+				media.URL = firstCanvasProjectionString(candidate, "dataUrl", "url", "content", "resultUrl", "outputUrl")
+			}
+			media.StorageKey = firstCanvasProjectionString(candidate, "storageKey")
+			media.ResourceID = firstCanvasProjectionString(candidate, "resourceId")
+			media.MimeType = firstCanvasProjectionString(candidate, "mimeType")
+			media.Width = canvasProjectionNonNegativeInt(candidate["width"])
+			media.Height = canvasProjectionNonNegativeInt(candidate["height"])
+			media.Bytes = canvasProjectionNonNegativeInt64(candidate["bytes"])
+			media.DurationMS = canvasProjectionNonNegativeInt64(candidate["durationMs"])
+		}
+	}
+	if media.ResourceID == "" && strings.HasPrefix(media.StorageKey, "resource:") {
+		media.ResourceID = strings.TrimPrefix(media.StorageKey, "resource:")
+	}
+	if media.ResourceID == "" {
+		media.ResourceID = canvasProjectionResourceIDFromURL(media.URL)
+	}
+	if media.StorageKey == "" && media.ResourceID != "" {
+		media.StorageKey = "resource:" + media.ResourceID
+	}
+	if media.MimeType == "" {
+		media.MimeType = "video/mp4"
+	}
+	return media, isCanvasProjectionMediaURL(media.URL)
+}
+
+func canonicalFilmGenerationResultNode(existing map[string]any, generationNode map[string]any, resultNodeID string, patch model.CanvasProjectionPatch, media canvasProjectionVideoMedia) map[string]any {
+	generationRef, _ := generationNode["domainRef"].(map[string]any)
+	domainRef := map[string]any{
+		"projectId":       patch.TargetProjectID,
+		"artifactId":      patch.TargetArtifactID,
+		"artifactVersion": strconv.Itoa(patch.TargetArtifactVersion),
+	}
+	for _, field := range []string{"unitId", "sceneId", "shotId"} {
+		if value := canvasProjectionString(generationRef[field]); value != "" {
+			domainRef[field] = value
+		}
+	}
+	applyCanvasProjectionExecutionFacts(domainRef, patch)
+	if media.ResourceID != "" {
+		domainRef["resourceId"] = media.ResourceID
+	}
+
+	position := canvasProjectionResultPosition(generationNode)
+	width, height := canvasProjectionVideoNodeSize(media)
+	title := canvasProjectionResultTitle(generationNode)
+	layout := map[string]any{"mode": "auto", "lane": "shot_pipeline"}
+	metadata := map[string]any{}
+	if existing != nil {
+		if value := canvasProjectionString(existing["title"]); value != "" {
+			title = value
+		}
+		if value, ok := existing["position"].(map[string]any); ok && canvasProjectionPositionValid(value) {
+			position = value
+		}
+		if value, ok := existing["width"]; ok && canvasProjectionNonNegativeInt(value) > 0 {
+			width = canvasProjectionNonNegativeInt(value)
+		}
+		if value, ok := existing["height"]; ok && canvasProjectionNonNegativeInt(value) > 0 {
+			height = canvasProjectionNonNegativeInt(value)
+		}
+		if value, ok := existing["layout"].(map[string]any); ok {
+			layout = value
+		}
+		if value, ok := existing["metadata"].(map[string]any); ok {
+			for key, item := range value {
+				metadata[key] = item
+			}
+		}
+	}
+	metadata["content"] = media.URL
+	metadata["storageKey"] = media.StorageKey
+	metadata["status"] = "success"
+	metadata["mimeType"] = media.MimeType
+	metadata["taskId"] = patch.TaskID
+	metadata["taskStatus"] = "succeeded"
+	metadata["taskProgress"] = 100
+	metadata["taskStage"] = "任务完成"
+	metadata["generationSourceNodeId"] = canvasProjectionString(generationNode["id"])
+	if media.Width > 0 {
+		metadata["naturalWidth"] = media.Width
+	}
+	if media.Height > 0 {
+		metadata["naturalHeight"] = media.Height
+	}
+	if media.Bytes > 0 {
+		metadata["bytes"] = media.Bytes
+	}
+	if media.DurationMS > 0 {
+		metadata["durationMs"] = media.DurationMS
+	}
+
+	node := map[string]any{
+		"id":        resultNodeID,
+		"type":      "video",
+		"filmKind":  "result",
+		"domainRef": domainRef,
+		"filmState": map[string]any{"lifecycle": "locked", "production": "generated", "evidence": "recorded", "attention": "none"},
+		"layout":    layout,
+		"title":     title,
+		"position":  position,
+		"width":     width,
+		"height":    height,
+		"metadata":  metadata,
+	}
+	if existing != nil {
+		if parentID := canvasProjectionString(existing["parentId"]); parentID != "" {
+			node["parentId"] = parentID
+		}
+	}
+	return node
+}
+
+func ensureFilmGenerationResultConnection(connections []any, taskID string, fromNodeID string, toNodeID string) ([]any, bool) {
+	canonicalID := "film-generation-result-edge:" + taskID
+	canonical := map[string]any{
+		"id":         canonicalID,
+		"fromNodeId": fromNodeID,
+		"toNodeId":   toNodeID,
+		"edgeType":   "derivation",
+		"filmPorts":  map[string]any{"from": "generation_job", "to": "generation_job"},
+	}
+	for index, value := range connections {
+		connection, ok := value.(map[string]any)
+		if !ok {
+			continue
+		}
+		if canvasProjectionString(connection["id"]) == canonicalID {
+			connections[index] = canonical
+			return connections, true
+		}
+		if canvasProjectionString(connection["fromNodeId"]) == fromNodeID && canvasProjectionString(connection["toNodeId"]) == toNodeID {
+			connection["edgeType"] = "derivation"
+			connection["filmPorts"] = map[string]any{"from": "generation_job", "to": "generation_job"}
+			return connections, true
+		}
+	}
+	return append(connections, canonical), true
+}
+
+func canvasProjectionResultPosition(generationNode map[string]any) map[string]any {
+	position, _ := generationNode["position"].(map[string]any)
+	x := canvasProjectionNumber(position["x"])
+	y := canvasProjectionNumber(position["y"])
+	width := canvasProjectionNumber(generationNode["width"])
+	if width <= 0 {
+		width = 320
+	}
+	return map[string]any{"x": x + width + 64, "y": y}
+}
+
+func canvasProjectionVideoNodeSize(media canvasProjectionVideoMedia) (int, int) {
+	if media.Width > 0 && media.Height > 0 {
+		width := media.Width
+		if width > 480 {
+			width = 480
+		}
+		height := int(float64(width) * float64(media.Height) / float64(media.Width))
+		if height > 0 {
+			return width, height
+		}
+	}
+	return 360, 203
+}
+
+func canvasProjectionResultTitle(generationNode map[string]any) string {
+	if title := canvasProjectionString(generationNode["title"]); title != "" {
+		return title + " · 视频结果"
+	}
+	return "视频生成结果"
+}
+
+func canvasProjectionPositionValid(position map[string]any) bool {
+	_, xOK := position["x"]
+	_, yOK := position["y"]
+	return xOK && yOK
+}
+
+func firstCanvasProjectionString(value map[string]any, keys ...string) string {
+	for _, key := range keys {
+		if result := canvasProjectionString(value[key]); result != "" {
+			return result
+		}
+	}
+	return ""
+}
+
+func canvasProjectionResourceIDFromURL(value string) string {
+	const prefix = "/api/resources/"
+	index := strings.Index(value, prefix)
+	if index < 0 {
+		return ""
+	}
+	rest := strings.TrimPrefix(value[index:], prefix)
+	id, _, _ := strings.Cut(rest, "/")
+	return strings.TrimSpace(id)
+}
+
+func isCanvasProjectionMediaURL(value string) bool {
+	value = strings.TrimSpace(strings.ToLower(value))
+	return strings.HasPrefix(value, "/api/resources/") || strings.HasPrefix(value, "https://") || strings.HasPrefix(value, "http://")
+}
+
+func canvasProjectionNonNegativeInt(value any) int {
+	return int(canvasProjectionNonNegativeInt64(value))
+}
+
+func canvasProjectionNonNegativeInt64(value any) int64 {
+	switch typed := value.(type) {
+	case float64:
+		if typed > 0 {
+			return int64(typed)
+		}
+	case float32:
+		if typed > 0 {
+			return int64(typed)
+		}
+	case int:
+		if typed > 0 {
+			return int64(typed)
+		}
+	case int64:
+		if typed > 0 {
+			return typed
+		}
+	case json.Number:
+		if parsed, err := typed.Int64(); err == nil && parsed > 0 {
+			return parsed
+		}
+	case string:
+		if parsed, err := strconv.ParseInt(strings.TrimSpace(typed), 10, 64); err == nil && parsed > 0 {
+			return parsed
+		}
+	}
+	return 0
+}
+
+func canvasProjectionNumber(value any) float64 {
+	switch typed := value.(type) {
+	case float64:
+		return typed
+	case float32:
+		return float64(typed)
+	case int:
+		return float64(typed)
+	case int64:
+		return float64(typed)
+	case json.Number:
+		parsed, _ := typed.Float64()
+		return parsed
+	case string:
+		parsed, _ := strconv.ParseFloat(strings.TrimSpace(typed), 64)
+		return parsed
+	default:
+		return 0
+	}
+}
+
+func nodeMap(value any) map[string]any {
+	node, _ := value.(map[string]any)
+	return node
 }

@@ -1,4 +1,4 @@
-import type { FilmArtifact, ProjectAsset, ProjectDetail, ProjectScene, ProjectShot } from "@/services/api/projects";
+import type { FilmArtifact, ProjectAsset, ProjectDetail, ProjectScene, ProjectShot, SceneSpatialGate } from "@/services/api/projects";
 import type { CanvasNodeData } from "@/types/canvas";
 
 export type ResolvedFilmNode = {
@@ -6,6 +6,9 @@ export type ResolvedFilmNode = {
     shot?: ProjectShot;
     asset?: ProjectAsset;
     artifact?: FilmArtifact;
+    spatialPackArtifact?: FilmArtifact;
+    spatialGateArtifact?: FilmArtifact;
+    spatialGate?: SceneSpatialGate;
     contract: Record<string, unknown>;
     definition: Record<string, unknown>;
     sceneShots: ProjectShot[];
@@ -22,6 +25,9 @@ export function resolveFilmNode(node: CanvasNodeData, project?: ProjectDetail): 
     const shot = ref?.shotId ? shots.find((item) => item.id === ref.shotId) : undefined;
     const asset = ref?.assetId ? assets.find((item) => item.id === ref.assetId) : undefined;
     const artifact = resolveArtifact(project, node.filmKind, ref?.artifactId || shot?.contractArtifactId, shot?.id);
+    const spatialPackArtifact = resolveSceneArtifact(project, scene?.id || shot?.sceneId, "scene_asset_pack");
+    const spatialGateArtifact = resolveSceneArtifact(project, scene?.id || shot?.sceneId, "spatial_continuity_gate");
+    const spatialGate = parseSpatialGate(spatialGateArtifact?.payloadJson);
     const versionIds = new Set([asset?.primaryVersionId, ref?.assetVersionId].filter(Boolean));
 
     return {
@@ -29,11 +35,31 @@ export function resolveFilmNode(node: CanvasNodeData, project?: ProjectDetail): 
         shot,
         asset,
         artifact,
+        spatialPackArtifact,
+        spatialGateArtifact,
+        spatialGate,
         contract: parseObject(artifact?.payloadJson),
         definition: asset?.character?.definition || asset?.currentVersion?.definition || {},
         sceneShots: scene ? shots.filter((item) => item.sceneId === scene.id) : [],
         usedShotCount: shotReferences.filter((item) => versionIds.has(item.assetVersionId)).length,
     };
+}
+
+function resolveSceneArtifact(project: ProjectDetail | undefined, sceneId: string | undefined, artifactType: string) {
+    if (!project || !sceneId) return undefined;
+    return (project.filmArtifacts || [])
+        .filter((item) => item.sceneId === sceneId && item.artifactType === artifactType)
+        .sort((left, right) => right.objectVersion - left.objectVersion)[0];
+}
+
+function parseSpatialGate(value: string | undefined): SceneSpatialGate | undefined {
+    if (!value) return undefined;
+    try {
+        const parsed = JSON.parse(value) as SceneSpatialGate;
+        return parsed && typeof parsed === "object" && typeof parsed.status === "string" ? parsed : undefined;
+    } catch {
+        return undefined;
+    }
 }
 
 function resolveArtifact(project: ProjectDetail | undefined, filmKind: CanvasNodeData["filmKind"], artifactId: string | undefined, shotId: string | undefined) {

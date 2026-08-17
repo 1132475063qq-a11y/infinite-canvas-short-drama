@@ -7,24 +7,23 @@
 <p align="center">让一个故事，从文字走向银幕</p>
 
 <p align="center">
-  <a href="https://github.com/ddcat-ai/open-ai-canvas"><img src="https://img.shields.io/github/stars/ddcat-ai/open-ai-canvas?style=flat-square&logo=github" alt="GitHub stars"></a>
-  <a href="VERSION"><img src="https://img.shields.io/badge/version-v1.0.43-2563eb?style=flat-square" alt="Version"></a>
+  <a href="https://github.com/1132475063qq-a11y/infinite-canvas-short-drama"><img src="https://img.shields.io/github/stars/1132475063qq-a11y/infinite-canvas-short-drama?style=flat-square&logo=github" alt="GitHub stars"></a>
+  <a href="VERSION"><img src="https://img.shields.io/badge/version-v1.0.49-2563eb?style=flat-square" alt="Version"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-AGPL--3.0-f97316?style=flat-square" alt="License"></a>
 </p>
 
 一个故事也许始于一页小说、一个人物，或一句还没写完的对白。影策从章节中梳理角色与情节，让人物的外观、声音和气质成为可复用的角色资产，再把分镜、图片、视频和音频组织在同一张画布上。从最初的文字到可以被看见、被听见的镜头，创作者始终掌握故事的方向。
 
-影策是一款面向 AI 影视与短剧创作的开源工作台，集成自由画布、结构化分镜、角色卡、3D 导演台、素材库、异步生成任务和 Agent 协作能力。
+影策是一款面向 AI 影视、短剧与电商创意的开源工作台，集成自由画布、结构化分镜、角色卡、3D 导演台、素材库、异步生成任务和 Agent 协作能力。电商 Domain 当前处于 Provider-free Prototype A 阶段，尚未开放真实电商生成。
 
 > 项目仍在快速开发，数据结构可能直接调整。当前更适合个人、本地或可信环境部署，不建议未经安全配置直接开放公网多人使用。
 
-## 在线体验
+## 代码仓库
 
-- 临时演示环境：[https://ddcat.pronhubcn.com](https://ddcat.pronhubcn.com)
-- 测试账号：`test`
-- 测试密码：`test123456`
-- 测试环境：[https://ai.ddcat.pro/login](https://ai.ddcat.pro/login)
-- 代码仓库：[ddcat-ai/open-ai-canvas](https://github.com/ddcat-ai/open-ai-canvas)
+- 当前开发分支：[codex/phase4-film-nodes](https://github.com/1132475063qq-a11y/infinite-canvas-short-drama/tree/codex/phase4-film-nodes)
+- 项目仓库：[1132475063qq-a11y/infinite-canvas-short-drama](https://github.com/1132475063qq-a11y/infinite-canvas-short-drama)
+
+当前仓库不提供可公开复用的演示账号或线上测试环境。请在可信部署中创建自己的管理员账号，并按下文完成模型渠道配置。
 
 ## 赞助商
 
@@ -91,34 +90,31 @@ Issue 反馈、技术讨论和产品升级建议都可以在 QQ 群中沟通。�
 适用于刚买的 Linux 云服务器。准备一台 Ubuntu、Debian、CentOS 或 Rocky Linux 服务器，在云厂商防火墙（安全组）中先仅对自己的公网 IP 放行 TCP `3000` 端口，然后登录服务器执行这一条命令：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/ddcat-ai/open-ai-canvas/main/scripts/install-server.sh | sudo bash
+curl -fsSL https://raw.githubusercontent.com/1132475063qq-a11y/infinite-canvas-short-drama/codex/phase4-film-nodes/scripts/install-server.sh \
+  | sudo env REPOSITORY_URL=https://github.com/1132475063qq-a11y/infinite-canvas-short-drama.git \
+      REPOSITORY_REF=codex/phase4-film-nodes \
+      INSTALL_DIR=/opt/infinite-canvas-short-drama bash
 ```
 
-脚本会自动安装 Docker 和 Docker Compose，把项目源码安装到 `/opt/open-ai-canvas`，生成随机数据库密码，在服务器本地构建网页与后端镜像，并启动网页、后端、PostgreSQL 和 Redis。该流程不依赖 GitHub Container Registry（GHCR）的匿名拉取权限；数据库和上传文件使用 Docker 数据卷持久保存，重新启动容器不会丢失。
+脚本会自动安装 Docker 和 Docker Compose，把项目源码安装到 `/opt/infinite-canvas-short-drama`，生成随机数据库密码，在服务器本地构建网页与后端镜像，并启动网页、后端、PostgreSQL 和 Redis。该流程不依赖 GitHub Container Registry（GHCR）的匿名拉取权限；数据库和上传文件使用 Docker 数据卷持久保存，重新启动容器不会丢失。
 
 完成后打开 `http://服务器IP:3000`。第一个注册的账号会自动成为管理员；登录后在系统设置中配置模型渠道即可开始使用。公开注册默认关闭，但不影响第一个管理员注册。
 
 再次执行同一条命令即可拉取新代码并更新。常用排查命令：
 
 ```bash
-cd /opt/open-ai-canvas
+cd /opt/infinite-canvas-short-drama
 sudo docker compose --env-file .env -f docker-compose.deploy.yml -f docker-compose.build.yml ps
 sudo docker compose --env-file .env -f docker-compose.deploy.yml -f docker-compose.build.yml logs -f --tail=200
 ```
 
 首次部署需要下载构建依赖并编译前后端，耗时和资源占用会高于直接拉取镜像；后续更新会复用 Docker 构建缓存。需要固定代码版本时，可通过 `REPOSITORY_REF` 指定分支或标签。
 
-### 直接使用 GitHub Packages 镜像
+### 镜像部署
 
-如果服务器不需要源码目录，可以使用只拉取 GitHub Container Registry（GHCR）镜像的快速脚本。脚本会下载部署 Compose 文件，不会 clone Git 仓库；首次执行仍会自动安装 Docker、生成 `/opt/open-ai-canvas/.env` 并启动全部服务：
+当前仓库未发布自己的 GHCR 镜像，因此不要把上游的镜像部署脚本当作本项目的发布渠道。请使用上方的源码构建部署；以后启用本仓库的镜像发布后，再补充镜像名、标签策略和回滚步骤。
 
-```bash
-curl -fsSL https://raw.githubusercontent.com/ddcat-ai/open-ai-canvas/main/scripts/install-server-image.sh | sudo bash
-```
-
-该快速脚本仍依赖 GHCR 容器包的可见性。容器包尚未公开时，必须先执行 `docker login ghcr.io`，或在直接运行脚本时提供 `GHCR_USERNAME` 和 `GHCR_TOKEN` 环境变量完成登录；未配置凭据时请使用上方推荐的源码构建脚本。默认使用 `latest` 标签，固定版本或修改端口可在首次执行后编辑 `/opt/open-ai-canvas/.env`，然后重新执行脚本。
-
-部署配置和 PostgreSQL 密码保存在 `/opt/open-ai-canvas/.env`，不要发送给他人，也不要删除 `backend-data`、`postgres-data` 和 `redis-data` 数据卷。数据卷持久化不等于备份，请定期备份 PostgreSQL 和上传文件。直接使用 IP 访问仅适合首次配置；公网长期使用必须绑定域名并配置 HTTPS。
+部署配置和 PostgreSQL 密码保存在 `/opt/infinite-canvas-short-drama/.env`，不要发送给他人，也不要删除 `backend-data`、`postgres-data` 和 `redis-data` 数据卷。数据卷持久化不等于备份，请定期备份 PostgreSQL 和上传文件。直接使用 IP 访问仅适合首次配置；公网长期使用必须绑定域名并配置 HTTPS。
 
 ## 生产环境文本 SSE
 
@@ -201,8 +197,8 @@ curl -N --http1.1 \
 需要 Bun、Go 和可用的 OpenAI 兼容模型渠道。
 
 ```bash
-git clone https://github.com/ddcat-ai/open-ai-canvas.git
-cd open-ai-canvas
+git clone --branch codex/phase4-film-nodes https://github.com/1132475063qq-a11y/infinite-canvas-short-drama.git
+cd infinite-canvas-short-drama
 ```
 
 后端开发数据统一保存在 Git 忽略的 `.local/project-workbench-debug`。启动前先检查该目录，不要改用 `backend/data` 或其他目录；仅在确认本机没有既有开发数据时创建：
@@ -252,7 +248,7 @@ docker compose -f docker-compose.local.yml up -d --build
 
 ## 数据说明
 
-- 用户自定义 AI API Key 保存在浏览器本地；登录态拉取模型目录时会临时提交给自部署后端但不会保存，创建异步任务时会加密入队；仅应使用可信部署，生产环境必须启用 HTTPS。
+- 平台模式默认只向普通用户开放管理员托管、已启用并已定价的系统模型。普通用户不能通过自定义渠道或自带 API Key 绕过积分、计费和渠道治理；管理员可以在受控自部署中按需启用自定义渠道能力。
 - 画布和素材登录后同步到后端，本地 `localForage` 继续承担缓存和降级存储。
 - 媒体资源在启用 OSS 时保存到私有 OSS，否则保存到后端数据目录；删除业务记录不会自动清理 OSS 对象。
 - 用户主动上传、Agent 会话附件和 AI 生成资源的单文件上限、账号容量及 UTC 日上传总量由后台“资源与策略”统一维护，默认分别为 50MB、32MB、64MB、2GB 和 200MB；管理员可按可信部署需要调整，单文件业务上限最高 999MB，Nginx 请求体硬上限为 1024MB。
@@ -270,6 +266,8 @@ docker compose -f docker-compose.local.yml up -d --build
 - [安全策略](SECURITY.md)
 - [贡献指南](CONTRIBUTING.md)
 - [行为准则](CODE_OF_CONDUCT.md)
+- [文档索引](docs/index.md)
+- [待验证功能](docs/content/docs/pending-test.mdx)
 - [上游与第三方声明](NOTICE)
 - [本地 Canvas Agent](canvas-agent/README.md)
 - [Codex App 插件](plugins/infinite-canvas/README.md)

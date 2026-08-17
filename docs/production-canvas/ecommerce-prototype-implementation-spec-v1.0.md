@@ -1,7 +1,7 @@
 # Ecommerce Creative Studio — Prototype Implementation Spec v1.0
 
 更新时间：2026-08-13
-执行仓库：`/Users/xiangyuqin/Downloads/infinite-canvas-short-drama`
+执行仓库：当前仓库。
 前置架构：[`ecommerce-agent-team-v1.2.1-codex-ready.md`](./ecommerce-agent-team-v1.2.1-codex-ready.md)
 
 ## 1. 给 Codex 的任务边界
@@ -12,7 +12,7 @@
 2. `NEW-ACCOUNT-HANDOFF.md`
 3. `docs/production-canvas/ecommerce-agent-team-v1.2.1-codex-ready.md`
 4. 本文件
-5. `/Users/xiangyuqin/Downloads/短剧AI无限画布_Production_Canvas_v2_超详细发展规划.md`
+5. 当前环境可用的仓库外 Film 主规划（仅作为设计来源）
 6. 仓库内 `AGENTS.md`
 
 执行前检查当前分支和 Git 状态，保留用户改动，不重做 Film Phase 1–4 已完成内容。

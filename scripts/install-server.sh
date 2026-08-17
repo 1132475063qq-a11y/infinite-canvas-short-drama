@@ -2,9 +2,9 @@
 
 set -Eeuo pipefail
 
-REPOSITORY_URL="${REPOSITORY_URL:-https://github.com/ddcat-ai/open-ai-canvas.git}"
+REPOSITORY_URL="${REPOSITORY_URL:-https://github.com/1132475063qq-a11y/infinite-canvas-short-drama.git}"
 REPOSITORY_REF="${REPOSITORY_REF:-main}"
-INSTALL_DIR="${INSTALL_DIR:-/opt/open-ai-canvas}"
+INSTALL_DIR="${INSTALL_DIR:-/opt/infinite-canvas-short-drama}"
 CANVAS_HTTP_PORT="${CANVAS_HTTP_PORT:-3000}"
 COMPOSE_FILE="docker-compose.deploy.yml"
 BUILD_COMPOSE_FILE="docker-compose.build.yml"

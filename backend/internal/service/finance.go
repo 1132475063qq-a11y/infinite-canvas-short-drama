@@ -436,14 +436,14 @@ func (s *Service) taskBillingOrder(userID string, task *model.Task, input map[st
 	if config == nil {
 		return nil, nil
 	}
-	channelID := strings.TrimSpace(fmt.Sprint(config["channelId"]))
+	channelID := taskConfigString(config, "channelId")
 	if channelID == "" {
-		channelID = systemChannelIDFromBaseURL(fmt.Sprint(config["baseUrl"]))
+		channelID = systemChannelIDFromBaseURL(taskConfigString(config, "baseUrl"))
 	}
 	if channelID == "" {
 		return nil, nil
 	}
-	modelKey := strings.TrimPrefix(strings.TrimSpace(fmt.Sprint(config["model"])), "models/")
+	modelKey := strings.TrimPrefix(taskConfigString(config, "model"), "models/")
 	capability := normalizeCapability(fmt.Sprint(input["mode"]))
 	if capability == "" {
 		capability = capabilityFromTaskType(task.Type)

@@ -58,11 +58,11 @@ export function prototypeChainToArtifactInputs(chain: PrototypeAChain): Ecommerc
     const normalizeRefs = (refs: string[]) => [...new Set(refs.map((ref) => refMap.get(ref) || ref).filter(Boolean))];
 
     return [
-        toInput(keys.productDna, chain.productDna, normalizeRefs(chain.productDna.sourceRefs), normalizeRefs(chain.productDna.authorityRefs)),
-        toInput(keys.creativeDirection, chain.creativeDirection, normalizeRefs(chain.creativeDirection.sourceRefs), normalizeRefs(chain.creativeDirection.authorityRefs)),
-        toInput(keys.scenePlan, chain.scenePlan, normalizeRefs(chain.scenePlan.sourceRefs), normalizeRefs(chain.scenePlan.authorityRefs)),
+        toInput(keys.productDna, "product_dna", chain.productDna, normalizeRefs(chain.productDna.sourceRefs), normalizeRefs(chain.productDna.authorityRefs)),
+        toInput(keys.creativeDirection, "creative_direction", chain.creativeDirection, normalizeRefs(chain.creativeDirection.sourceRefs), normalizeRefs(chain.creativeDirection.authorityRefs)),
+        toInput(keys.scenePlan, "scene_plan", chain.scenePlan, normalizeRefs(chain.scenePlan.sourceRefs), normalizeRefs(chain.scenePlan.authorityRefs)),
         {
-            ...toInput(keys.creativeShotPlan, chain.creativeShotPlan, normalizeRefs(chain.creativeShotPlan.sourceRefs), normalizeRefs(chain.creativeShotPlan.authorityRefs)),
+            ...toInput(keys.creativeShotPlan, "creative_shot_plan", chain.creativeShotPlan, normalizeRefs(chain.creativeShotPlan.sourceRefs), normalizeRefs(chain.creativeShotPlan.authorityRefs)),
             skillRef: chain.creativeShotPlan.payload.skillRef,
         },
         {
@@ -108,10 +108,10 @@ export function hydratePrototypeAFromArtifacts(artifacts: PersistedEcommerceArti
     };
 }
 
-function toInput<TPayload>(key: string, artifact: EcommerceArtifact<TPayload>, sourceRefs: string[], authorityRefs: string[]): EcommercePrototypeArtifactInput {
+function toInput<TPayload>(key: string, artifactType: EcommercePrototypeArtifactInput["artifactType"], artifact: EcommerceArtifact<TPayload>, sourceRefs: string[], authorityRefs: string[]): EcommercePrototypeArtifactInput {
     return {
         artifactKey: key,
-        artifactType: artifact.artifactType,
+        artifactType,
         schemaVersion: artifact.schemaVersion,
         lifecycle: "draft",
         evidence: artifact.evidence,

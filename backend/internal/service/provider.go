@@ -571,6 +571,9 @@ func (s *Service) resolveProviderConfig(config providerConfig) (providerConfig, 
 		channelID = systemChannelIDFromBaseURL(config.BaseURL)
 	}
 	if channelID == "" {
+		if err := s.RequireFeature(FeatureCustomChannels); err != nil {
+			return providerConfig{}, err
+		}
 		if _, err := ValidateOutboundURL(config.BaseURL); err != nil {
 			return providerConfig{}, err
 		}
@@ -666,7 +669,9 @@ func runImageTask(ctx context.Context, input canvasGenerationInput) (map[string]
 		writer := multipart.NewWriter(body)
 		writeField(writer, "model", input.Config.Model)
 		writeField(writer, "prompt", withSystemPrompt(input.Config, input.Prompt))
-		writeField(writer, "n", "1")
+		if imageCountParameterSupported(input.ImageCapability) {
+			writeField(writer, "n", "1")
+		}
 		if imageParameterSupported(input.ImageCapability, "response_format") {
 			writeField(writer, "response_format", "b64_json")
 		}
@@ -702,7 +707,9 @@ func runImageTask(ctx context.Context, input canvasGenerationInput) (map[string]
 		body := map[string]interface{}{
 			"model":  input.Config.Model,
 			"prompt": withSystemPrompt(input.Config, input.Prompt),
-			"n":      1,
+		}
+		if imageCountParameterSupported(input.ImageCapability) {
+			body["n"] = 1
 		}
 		if imageParameterSupported(input.ImageCapability, "response_format") {
 			body["response_format"] = "b64_json"

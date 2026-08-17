@@ -215,6 +215,9 @@ export type CanvasNodeMetadata = {
     taskStage?: string;
     taskCreatedAt?: string;
     taskUpdatedAt?: string;
+    // Derived media remembers its canvas source so the browser can rebuild only
+    // the system-managed result edge without guessing from a stale task binding.
+    generationSourceNodeId?: string;
     sessionId?: string;
     videoEditOperation?: CanvasVideoEditOperation;
     videoCameraMoveId?: string;

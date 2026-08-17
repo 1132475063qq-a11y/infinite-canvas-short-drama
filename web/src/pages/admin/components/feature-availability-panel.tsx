@@ -1,17 +1,18 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { App, Switch } from "antd";
-import { Clapperboard, Coins, ListChecks, ToggleLeft } from "lucide-react";
+import { Clapperboard, Coins, KeyRound, ListChecks, ToggleLeft } from "lucide-react";
 
 import { getAdminFeatureAvailability, updateAdminFeatureAvailability } from "@/services/api/auth";
 import { useUserStore, type FeatureAvailability } from "@/stores/use-user-store";
 import { SettingsSectionCard } from "./admin-ui";
 
-type FeatureKey = "shortDramaEnabled" | "taskCenterEnabled" | "creditsEnabled";
+type FeatureKey = "shortDramaEnabled" | "taskCenterEnabled" | "creditsEnabled" | "customChannelsEnabled";
 
 const featureRows: Array<{ key: FeatureKey; title: string; menu: string; description: string; icon: ReactNode }> = [
     { key: "shortDramaEnabled", title: "短剧创作", menu: "/projects", description: "关闭后隐藏短剧入口，并拦截项目列表、详情和项目 API。已有项目数据不会删除。", icon: <Clapperboard className="size-4" /> },
     { key: "taskCenterEnabled", title: "任务", menu: "/tasks", description: "关闭后仅隐藏并拦截任务中心页面；生成任务仍会创建、执行、记录和恢复。", icon: <ListChecks className="size-4" /> },
     { key: "creditsEnabled", title: "积分中心", menu: "/wallet", description: "关闭后隐藏用户积分入口，新创建的任务和系统渠道请求不再冻结或消费积分。", icon: <Coins className="size-4" /> },
+    { key: "customChannelsEnabled", title: "用户自定义渠道", menu: "/settings", description: "关闭后普通用户只能使用管理员托管并定价的系统模型；前端隐藏 BYOK，后端同时拒绝自定义渠道中转。", icon: <KeyRound className="size-4" /> },
 ];
 
 export default function FeatureAvailabilityPanel() {
@@ -41,6 +42,7 @@ export default function FeatureAvailabilityPanel() {
                 shortDramaEnabled: next.shortDramaEnabled,
                 taskCenterEnabled: next.taskCenterEnabled,
                 creditsEnabled: next.creditsEnabled,
+                customChannelsEnabled: next.customChannelsEnabled,
             });
             setFeatures(result.features);
             setGlobalFeatures(result.features);

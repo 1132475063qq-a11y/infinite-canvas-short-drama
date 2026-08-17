@@ -1,0 +1,37 @@
+---
+title: 待办
+---
+
+# 待办
+
+本页只记录尚未完成或尚未经当前工作树验收的事项。功能代码写完后先进入 [验收记录](pending-test.mdx)，通过用户确认后才更新正式功能说明。
+
+## P0：当前 Film 工作树复核
+
+- 复跑并检查空间 Pack 乐观锁、项目删除门禁、Film Task 双 ID 迁移、视频结果画布投影与渠道目录同步的针对性回归。
+- 以登录态浏览器验收空间编辑器：新建、保存、版本冲突、`PASS` / `UNCERTAIN` / `FAIL` / `NEEDS_YOU`、以及 Generation Request Gate。
+- 在明确测试预算、并发限制、下载鉴权和退款策略后，才进行视频 Provider 的受控端到端验收。
+
+## P1：Film 产品闭环
+
+- 补端用户可用的 Retry / QC 界面与人工复核流程。
+- 仅在确有跨场景需求时，引入项目级 Location / Opening 身份，不把现有 SceneHierarchy 当作跨场景空间事实源。
+- 用真实剧本建立数据库 Golden Project，并完成素材、空间、镜头、请求、任务和结果的回归验收。
+- 实现 `production-breakdown -> SceneManifest` 自动提取、缺失视角检测和真实成片的视觉诊断前，继续把它们标为人工/合同边界。
+
+## P0：Ecommerce Prototype 验证前置
+
+- 由用户提供实际可调用、允许测试的图片渠道和约五个真实商品；先做 Provider Bake-off，不默认选择渠道。
+- 定义并执行同一商品的 Basic Prompt / Expert Prompt / Creative Skill 盲测，记录身份一致性、商用可用性、物理合理性、AI 缺陷、成本、延迟和失败证据。
+- 只根据真实结果做 `GO` / `MODIFY` / `STOP`，不预设 Skill 必须赢得固定比例。
+
+## P1：仅在 Prototype A 有证据后
+
+- 接入一个通过 Bake-off 的图片 Provider，建立真实生成、媒体回写、成本记录和人工 QA 闭环。
+- 增加 `fashion.natural-walk` Prototype B；不要在此之前实现完整五个 Skill 或 Full Ecommerce V1。
+- 为 Provider Evaluation 增加后端持久化与审计 UI；自动视觉 QA 仅在真实样本确定可用阈值后进入 Gate。
+
+## 不在当前范围
+
+- 多 Provider 并行、视频生成、UGC、商品详情页、卖点图、文案、Skill Marketplace、用户模型训练、ERP、CRM、投放和自动发布。
+- 未经用户明确授权的真实视频测试、生产渠道修改、积分价格调整或费用消耗。

@@ -7,6 +7,7 @@ import { scopedLocalStorage } from "@/lib/user-scope";
 import { modelProtocolCapability, normalizeModelProtocol, type ModelProtocol } from "@/lib/model-protocols";
 import { normalizeVideoDuration, normalizeVideoResolution } from "@/lib/video-generation-options";
 import type { ModelCapabilityConfig } from "@/lib/model-capabilities";
+import { useUserStore } from "@/stores/use-user-store";
 
 export type ApiCallFormat = "openai" | "gemini";
 export type ChannelInterfaceType = ModelProtocol;
@@ -333,7 +334,18 @@ function normalizeSelectedModel(value: string, channels: ModelChannel[], options
 
 export function useEffectiveConfig() {
     const config = useConfigStore((state) => state.config);
-    return useMemo(() => ({ ...config, channelMode: "local" as const }), [config]);
+    const customChannelsEnabled = useUserStore((state) => state.features.customChannelsEnabled);
+    return useMemo(() => effectiveConfigForChannelPolicy(config, customChannelsEnabled), [config, customChannelsEnabled]);
+}
+
+export function effectiveConfigForChannelPolicy(config: AiConfig, customChannelsEnabled: boolean) {
+    if (customChannelsEnabled) return { ...config, channelMode: "local" as const };
+    return normalizeConfigSnapshot({
+        config: {
+            ...config,
+            channels: config.channels.filter((channel) => channel.scope === "system"),
+        },
+    }).config;
 }
 
 export function createModelChannel(channel?: Partial<ModelChannel>): ModelChannel {

@@ -21,13 +21,18 @@ title: Backend Database
 ### `film_artifacts`
 
 `film_artifacts` 保存版本化影视生产事实，当前已用于 `shot_contract`、`acting`、
-`video_prompt_pack` 与 `generation_request`。每次 Inspector 保存会新增一行；Shot Contract
+`video_prompt_pack`、`generation_request`、`scene_asset_pack` 与 `spatial_continuity_gate`。每次 Inspector 保存会新增一行；Shot Contract
 还会原子更新 Shot 的当前版本指针。关键字段包括：
 
 - `project_id`、`unit_id`、`scene_id`、`shot_id`
+- `scope`、`scope_id`：统一支持 `project`、`unit`、`scene`、`shot` 四级版本作用域
 - `artifact_type`、`object_version`、`status`
 - `payload_json`、`source_refs_json`、`authority_refs_json`
 - `responsible_agent_id`
+
+版本唯一性由 `project_id + scope + scope_id + artifact_type + object_version` 保证。迁移会先按旧行已有的 Shot、Scene、Unit 或 Project 关联回填作用域，再创建唯一索引。
+
+`scene_asset_pack` 与派生的 `spatial_continuity_gate` 使用场景作用域并在同一事务中追加；Gate Payload 记录精确 Pack Artifact ID/版本。`draft` / `review` 可以保存未通过的空间包，`ready` / `locked` 只接受 `PASS`。场景关联的正式生成在提交事务内再次核对最新 Pack 与精确 Gate，失败时不会创建 Task 或计费预留。
 
 项目、章节或批量分镜删除时，对应 Artifact 与镜头引用在同一事务中清理。
 

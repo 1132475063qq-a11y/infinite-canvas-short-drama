@@ -95,12 +95,15 @@ type ChannelRequest struct {
 }
 
 type PublicModelChannel struct {
-	ID               string                    `json:"id"`
-	UserID           string                    `json:"userId"`
-	Scope            model.ChannelScope        `json:"scope"`
-	Enabled          bool                      `json:"enabled"`
-	Name             string                    `json:"name"`
-	BaseURL          string                    `json:"baseUrl"`
+	ID      string             `json:"id"`
+	UserID  string             `json:"userId"`
+	Scope   model.ChannelScope `json:"scope"`
+	Enabled bool               `json:"enabled"`
+	Name    string             `json:"name"`
+	BaseURL string             `json:"baseUrl"`
+	// APIKey is only the non-secret "system" routing sentinel for ordinary
+	// users. A configured provider credential is never returned, including to
+	// administrators; update requests use an empty value to preserve it.
 	APIKey           string                    `json:"apiKey"`
 	APIFormat        string                    `json:"apiFormat"`
 	ConcurrencyLimit int                       `json:"concurrencyLimit"`
@@ -761,6 +764,9 @@ func publicChannel(channel model.ModelChannel, admin bool, channelModels []model
 	if len(models) == 0 {
 		_ = json.Unmarshal([]byte(channel.ModelsJSON), &models)
 	}
+	// Never put the stored credential into a response. The ordinary-user
+	// system proxy still needs its stable routing sentinel, which is not a
+	// credential and is intentionally safe to expose.
 	apiKey := ""
 	baseURL := channel.BaseURL
 	var headers []OutboundHeader
@@ -772,8 +778,6 @@ func publicChannel(channel model.ModelChannel, admin bool, channelModels []model
 		if admin {
 			headers, _ = ParseOutboundHeadersJSON(channel.HeadersJSON)
 		}
-	} else if admin {
-		apiKey = channel.APIKey
 	}
 	return PublicModelChannel{
 		ID:               channel.ID,

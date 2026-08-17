@@ -407,7 +407,7 @@ func enrichCanvasProjectionRuntimeFacts(db *gorm.DB, patches []model.CanvasProje
 	}
 	taskIDs := make([]string, 0, len(patches))
 	for _, patch := range patches {
-		if patch.PatchKind == "film_generation_task" && patch.TaskID != "" {
+		if (patch.PatchKind == model.CanvasProjectionPatchKindFilmGenerationTask || patch.PatchKind == model.CanvasProjectionPatchKindFilmGenerationResult) && patch.TaskID != "" {
 			taskIDs = append(taskIDs, patch.TaskID)
 		}
 	}
@@ -429,7 +429,7 @@ func enrichCanvasProjectionRuntimeFacts(db *gorm.DB, patches []model.CanvasProje
 		attemptIDs = append(attemptIDs, attempt.ID)
 	}
 	jobsByAttempt := map[string]string{}
-	resultsByAttempt := map[string]string{}
+	resultsByAttempt := map[string]model.Result{}
 	if len(attemptIDs) > 0 {
 		var jobs []model.ProviderJob
 		if err := db.Where("generation_attempt_id IN ?", attemptIDs).Order("last_observed_at desc").Find(&jobs).Error; err != nil {
@@ -446,7 +446,7 @@ func enrichCanvasProjectionRuntimeFacts(db *gorm.DB, patches []model.CanvasProje
 		}
 		for _, result := range results {
 			if _, exists := resultsByAttempt[result.AttemptID]; !exists {
-				resultsByAttempt[result.AttemptID] = result.ID
+				resultsByAttempt[result.AttemptID] = result
 			}
 		}
 	}
@@ -457,7 +457,79 @@ func enrichCanvasProjectionRuntimeFacts(db *gorm.DB, patches []model.CanvasProje
 		}
 		patches[index].GenerationAttemptID = attempt.ID
 		patches[index].ProviderJobID = jobsByAttempt[attempt.ID]
-		patches[index].ResultID = resultsByAttempt[attempt.ID]
+		if result, exists := resultsByAttempt[attempt.ID]; exists {
+			patches[index].ResultID = result.ID
+			patches[index].ResultURL = result.URL
+			patches[index].ResultPayload = result.Payload
+		}
+	}
+	return nil
+}
+
+// createFilmGenerationResultProjection records the derived Result node in the
+// same completion transaction as Task, Attempt, ProviderJob and Result. The
+// browser can keep saving a full Canvas snapshot without erasing this fact.
+func createFilmGenerationResultProjection(tx *gorm.DB, task *model.Task, results []model.Result, completedAt time.Time) error {
+	if task == nil || task.Provider != model.TaskProviderFilmGateway || strings.TrimSpace(task.CanvasID) == "" {
+		return nil
+	}
+	var filmResult *model.Result
+	for index := range results {
+		if results[index].TaskID == task.ID && results[index].Kind == model.ResultKindFilmGeneration {
+			filmResult = &results[index]
+			break
+		}
+	}
+	if filmResult == nil {
+		return nil
+	}
+
+	var taskPatch model.CanvasProjectionPatch
+	err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&taskPatch,
+		"user_id = ? AND canvas_id = ? AND task_id = ? AND patch_kind = ?",
+		task.UserID, task.CanvasID, task.ID, model.CanvasProjectionPatchKindFilmGenerationTask,
+	).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		// Legacy Film tasks may have completed before the canvas-binding contract
+		// existed. Keep their accounting and result history readable.
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if taskPatch.TargetProjectID == "" || taskPatch.TargetArtifactID == "" || taskPatch.TargetArtifactVersion < 1 {
+		return gorm.ErrInvalidData
+	}
+	if filmResult.DomainProjectID != taskPatch.TargetProjectID || filmResult.GenerationRequestArtifactID != taskPatch.TargetArtifactID || filmResult.GenerationRequestArtifactVersion != taskPatch.TargetArtifactVersion {
+		return gorm.ErrInvalidData
+	}
+
+	patch := model.CanvasProjectionPatch{
+		ID:                    newRepositoryID(),
+		UserID:                task.UserID,
+		CanvasID:              task.CanvasID,
+		NodeID:                model.FilmGenerationResultCanvasNodeID(task.ID),
+		PatchKind:             model.CanvasProjectionPatchKindFilmGenerationResult,
+		TargetProjectID:       taskPatch.TargetProjectID,
+		TargetArtifactID:      taskPatch.TargetArtifactID,
+		TargetArtifactVersion: taskPatch.TargetArtifactVersion,
+		TaskID:                task.ID,
+		CreatedAt:             completedAt,
+		UpdatedAt:             completedAt,
+	}
+	projected, changed, err := upsertCanvasProjectionPatch(tx, &patch)
+	if err != nil {
+		return err
+	}
+	if !changed {
+		return nil
+	}
+	updated := tx.Model(&model.CanvasProject{}).Where("id = ? AND user_id = ?", projected.CanvasID, projected.UserID).Update("updated_at", completedAt)
+	if updated.Error != nil {
+		return updated.Error
+	}
+	if updated.RowsAffected != 1 {
+		return gorm.ErrRecordNotFound
 	}
 	return nil
 }

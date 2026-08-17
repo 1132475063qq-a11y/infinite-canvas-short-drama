@@ -1,12 +1,12 @@
 # 新账号续接说明：AI Creative Studio（短剧 + 电商）无限画布
 
-本文件与当前 Film Provider Gateway 事实链改动在同一次 Git 提交中保存。新账号应以 GitHub 上 `codex/phase4-film-nodes` 分支的最新提交为准，不要依赖旧会话里的口头状态。
+本文件记录 `codex/phase4-film-nodes` 的续接边界。每次接手前都必须检查本地 `git status`、当前分支和上游同步状态；GitHub 提交只代表代码已同步，不代表浏览器、真实 Provider 或媒体质量已经验收。
 
 ## 1. 项目与交接边界
 
 | 项目项 | 当前值 |
 | --- | --- |
-| 本地正式仓库 | `/Users/xiangyuqin/Downloads/infinite-canvas-short-drama` |
+| 正式仓库 | 当前 checkout 的仓库根目录 |
 | GitHub 仓库 | `https://github.com/1132475063qq-a11y/infinite-canvas-short-drama` |
 | 当前分支 | `codex/phase4-film-nodes` |
 | 开发方向 | Film Production Canvas 为主；Ecommerce Creative Studio 保持独立 Prototype A 边界 |
@@ -17,7 +17,7 @@
 
 ## 2. 本轮已落地：Film Provider Gateway 执行事实链
 
-以下内容已经写入代码与测试合同，但本轮没有运行测试、typecheck、build、浏览器交互或真实 Provider 调用；它们是“已实现、待运行验收”，不是已完成的生产能力。
+Provider Gateway 的图片链路已经完成真实浏览器验收。空间连续性、视频结果投影和渠道目录同步已写入代码与测试合同，但当前分支仍需要针对性后端测试、前端构建与登录态浏览器回归；视频 Provider 没有验收。
 
 ### 已实现的后端事实源与事务边界
 
@@ -29,7 +29,7 @@
 - 新增只读执行历史接口：`GET /projects/:projectId/film-generation-requests/:artifactId/executions`。
 - Canvas 读取时由服务端临时投影 `taskId`、`generationAttemptId`、`providerJobId`、`resultId`；浏览器保存时会剥离这些运行时 ID，Canvas 不是事实源。
 
-### 已写入、尚未运行的测试合同
+### 测试合同与验证边界
 
 - 原子创建与幂等重放；损坏事实链重建保护；事务回滚；路由漂移拒绝。
 - 成功链、上游状态不明、排队后取消再 Retry、租约恢复、迟到 Provider 观察和过期 Worker 完成写入隔离。
@@ -46,22 +46,22 @@
 - Phase 2：Grid、Snap、Alignment、Distribution、Scene Lane、Collision 核心布局能力。
 - Phase 3：Project Navigator、顶部生产状态、Inspector Shell、Bottom Shot Strip；此前已有独立的自动测试和浏览器验收记录。
 - Phase 4：Scene、Shot、Character、Location、Prop、Acting、Prompt Pack、Generation Request、只读 Task Draft、只读 Provider Route Catalog、revision-safe Canvas Projection Patch。
-- 当前新增的 Phase 4/5 事实链以上述“待运行验收”边界为准，不能把以前的测试通过结果外推到本次改动。
+- 当前 Phase 4/5 工作树的完整回归仍以 `pending-test.mdx` 记录为准，不能把以前的测试通过结果外推到当前全部改动。
 
 ### Ecommerce Creative Studio（保持 Prototype A）
 
 - 已有 ProductDNA、CreativeDirection、ScenePlan、CreativeShotPlan、QAReport 和 Result Grid 的独立合同与后端持久化原型。
-- 已有 Provider Evaluation 记录合同，可以记录候选渠道、输入指纹、结果、成本、失败证据、盲测与 GO/MODIFY/STOP 决策。
+- 已有 Provider Evaluation 的纯 TypeScript 记录合同，可表达候选渠道、输入指纹、结果、成本、失败证据、盲测与 GO/MODIFY/STOP 决策；它尚未持久化，也不会调用 Provider。
 - 尚未做真实 Provider Bake-off、真实媒体生成、Agent Runtime、完整 Ecommerce Canvas 或 Full V1；不要把文档规划误报为已实现。
 
 ## 4. 仍未完成：严格的下一步顺序
 
 ### Film：先完成一条可验收的生成链
 
-1. **运行本轮针对性验收**：先验证新增后端合同、迁移和前端类型边界；任何失败先定位原因，不扩大为重写。
-2. **补前端显式交互**：在 Inspector 中显示费用确认、明确提交动作和只读执行历史；读取 Inspector 绝不能产生费用。
-3. **受控单 Provider 接受测试**：只选一个已配置的图片或视频渠道，由后端 Secret 管理密钥，以非生产素材跑一次真实任务，检查数据库事实、Canvas 投影与 Result。
-4. **结果与人工审核**：再做 Result 展示、QC、Retry UI，以及《寄生广告》SC01 Golden Project。
+1. **复跑本轮架构修复**：验证空间 Pack 双页面并发冲突、活动任务删除门禁、Task 双 ID 迁移与全部现有回归。
+2. **浏览器验收空间编辑器**：新建、保存、ready/locked、冲突刷新、Gate FAIL/UNCERTAIN/PASS 和 Generation Request 门禁。
+3. **补跨 Scene 的 Location/开口身份**：只有确有多场景连续性需求时再增加项目级 Location/Opening ID，不把 SceneHierarchy 误报为已实现。
+4. **再做端用户 Retry/QC UI 与数据库 Golden Project**。视频保持禁测，除非用户另行明确授权。
 
 当前禁止：一开始接多家 Provider、前端保存 API Key、提前实现复杂 Agent Runtime、多人协作或 Full Ecommerce V1。
 
@@ -78,8 +78,7 @@
 将下面文字直接发给新账号的 Codex：
 
 ```text
-请接手本地项目：
-/Users/xiangyuqin/Downloads/infinite-canvas-short-drama
+请接手当前仓库根目录中的项目。
 
 先完整读取：
 1. NEW-ACCOUNT-HANDOFF.md
@@ -90,14 +89,14 @@
 6. docs/production-canvas/ecommerce-prototype-addendum.md
 7. docs/production-canvas/ecommerce-agent-team-v1.2.1-codex-ready.md
 8. docs/production-canvas/ecommerce-prototype-implementation-spec-v1.0.md
-9. /Users/xiangyuqin/Downloads/短剧AI无限画布_Production_Canvas_v2_超详细发展规划.md
-10. /Users/xiangyuqin/Downloads/电商创意工作台设计.md
+9. 仓库外的 Film 主规划（如当前环境提供，仅作为设计来源）
+10. 仓库外的 Ecommerce 架构审查记录（如当前环境提供，仅作为设计来源）
 
 然后只做只读检查：git status -sb、git branch --show-current、git log -8 --oneline、git remote -v、git rev-list --left-right --count HEAD...@{upstream}。
 
-以 GitHub 上 codex/phase4-film-nodes 的最新提交为事实基线。不要重做 Film Phase 1–4；当前新增的 Provider Gateway 原子提交、GenerationAttempt、ProviderJob、Film Result、执行历史与 Canvas 运行时投影已经写入代码，但还没有运行验收，更没有真实 Provider 或真实媒体结果。
+先以当前本地文件和 `git diff` 为事实，不要执行会覆盖本地改动的 pull/reset/checkout。Provider Gateway 图片真实链路已经验收，视频未测试。
 
-下一步先审阅并运行针对性验证；验证通过后才做 Inspector 的费用确认、显式提交和执行历史 UI，再做单 Provider 受控接受测试。Film 与 Ecommerce Domain 必须隔离；不要提前接多家 Provider、Full Ecommerce V1 或复杂 Agent Runtime。
+下一步先复跑空间 Pack 乐观锁、项目删除门禁和 Task 双 ID 迁移测试，再做登录态空间编辑器验收。Film 与 Ecommerce Domain 必须隔离；不要提前接视频、Full Ecommerce V1 或复杂 Agent Runtime。
 ```
 
 ## 6. 新账号恢复步骤
@@ -105,7 +104,7 @@
 ### 使用现有本地目录
 
 ```bash
-cd /Users/xiangyuqin/Downloads/infinite-canvas-short-drama
+cd <repository-root>
 git status -sb
 git pull --ff-only
 git branch --show-current
@@ -127,6 +126,6 @@ git switch --track origin/codex/phase4-film-nodes
 
 ## 7. 启动与验收提醒
 
-项目的本地启动、端口与历史验收记录见 [CONTINUE-HERE.md](CONTINUE-HERE.md)。不要因为页面能打开就把本轮后端事实链视为验收通过；本轮尚缺真实后端运行、UI 点击和真实 Provider / 媒体质量证据。
+项目的本地启动、端口与历史验收记录见 [CONTINUE-HERE.md](CONTINUE-HERE.md)。不要因为页面能打开或代码已推送就把当前后端事实链视为验收通过；本轮尚缺针对性回归、视频 Provider 和真实媒体质量证据。
 
-本次 Git 推送只保存代码和交接信息，不会启动服务、调用模型或改变任何 Provider 配置。
+Git 推送只保存代码和交接信息，不会启动服务、调用模型或改变任何 Provider 配置。

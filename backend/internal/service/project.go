@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"infinite-canvas/backend/internal/model"
+	"infinite-canvas/backend/internal/repository"
 
 	"gorm.io/gorm"
 )
@@ -337,7 +338,13 @@ func (s *Service) DeleteProject(userID string, id string) error {
 	if _, err := s.repo.ProjectForUser(userID, id); err != nil {
 		return err
 	}
-	return s.repo.DeleteProject(userID, id)
+	if err := s.repo.DeleteProject(userID, id); err != nil {
+		if errors.Is(err, repository.ErrProjectHasUnsettledTasks) {
+			return Conflict("项目仍有排队、执行中或状态待核对的生成任务，请先取消任务并等待渠道与账务状态明确后再删除")
+		}
+		return err
+	}
+	return nil
 }
 
 func (s *Service) CreateProjectUnit(userID string, projectID string, req CreateProjectUnitRequest) (model.ProjectUnit, error) {
@@ -570,7 +577,8 @@ func IsProjectNotFound(err error) bool {
 	return errors.Is(err, gorm.ErrRecordNotFound)
 }
 
-// 任务仍以画布 ID 作为 projectId；写入前必须解析到业务项目并阻止归档项目继续生成。
+// Legacy tasks may still carry either ID in projectId. New Film tasks pass an
+// explicit DomainProjectID or CanvasID through taskActiveScopeID.
 func (s *Service) ensureTaskProjectActive(userID string, canvasOrProjectID string) error {
 	id := strings.TrimSpace(canvasOrProjectID)
 	if id == "" {
@@ -602,4 +610,14 @@ func (s *Service) ensureTaskProjectActive(userID string, canvasOrProjectID strin
 		return BadAuthRequest("项目已归档，无法创建生成任务")
 	}
 	return nil
+}
+
+func taskActiveScopeID(task model.Task) string {
+	if strings.TrimSpace(task.DomainProjectID) != "" {
+		return task.DomainProjectID
+	}
+	if strings.TrimSpace(task.CanvasID) != "" {
+		return task.CanvasID
+	}
+	return task.ProjectID
 }

@@ -12,6 +12,8 @@ export type GenerationTask = {
     id: string;
     sessionId?: string;
     projectId?: string;
+    domainProjectId?: string;
+    canvasId?: string;
     type: string;
     status: TaskStatus;
     progress?: number;
@@ -293,6 +295,6 @@ function delay(ms: number, signal?: AbortSignal) {
 }
 
 function notifyCanvasTaskCreated(task: GenerationTask) {
-    if (typeof window === "undefined" || !task.projectId) return;
+    if (typeof window === "undefined" || !(task.canvasId || task.projectId)) return;
     window.dispatchEvent(new CustomEvent("canvas:task-created", { detail: { task } }));
 }

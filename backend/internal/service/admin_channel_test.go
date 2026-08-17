@@ -2,9 +2,11 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"infinite-canvas/backend/internal/model"
@@ -79,14 +81,27 @@ func TestChannelFromRequestStoresAndClearsHeaders(t *testing.T) {
 }
 
 func TestPublicChannelOnlyReturnsSystemHeadersToAdmin(t *testing.T) {
-	channel := model.ModelChannel{ID: "system-1", Scope: model.ChannelScopeSystem, BaseURL: "https://example.com/v1", HeadersJSON: `[{"name":"X-Gateway-Tenant","value":"tenant-a"}]`}
+	channel := model.ModelChannel{ID: "system-1", Scope: model.ChannelScopeSystem, BaseURL: "https://example.com/v1", APIKey: "server-only-secret", HeadersJSON: `[{"name":"X-Gateway-Tenant","value":"tenant-a"}]`}
 	adminView := publicChannel(channel, true, nil)
 	if len(adminView.Headers) != 1 || adminView.Headers[0].Name != "X-Gateway-Tenant" {
 		t.Fatalf("admin headers = %#v", adminView.Headers)
 	}
+	if adminView.APIKey != "" || !adminView.HasAPIKey {
+		t.Fatalf("admin channel credentials leaked or readiness lost: %#v", adminView)
+	}
+	encoded, err := json.Marshal(adminView)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(encoded), "server-only-secret") {
+		t.Fatalf("admin channel response contains the stored credential: %s", encoded)
+	}
 	userView := publicChannel(channel, false, nil)
 	if len(userView.Headers) != 0 {
 		t.Fatalf("user headers = %#v", userView.Headers)
+	}
+	if userView.APIKey != "system" || !userView.HasAPIKey {
+		t.Fatalf("system proxy sentinel/readiness = %#v", userView)
 	}
 }
 

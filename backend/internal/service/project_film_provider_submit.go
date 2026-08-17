@@ -121,7 +121,7 @@ func (s *Service) SubmitFilmGenerationTask(userID string, projectID string, arti
 	}
 	now := time.Now()
 	task := model.Task{
-		ID: newID(), UserID: userID, ProjectID: canvasID, Type: draft.TaskType,
+		ID: newID(), UserID: userID, ProjectID: canvasID, DomainProjectID: draft.ProjectID, CanvasID: canvasID, Type: draft.TaskType,
 		Status: model.TaskStatusQueued, Stage: "等待队列调度", Progress: 5,
 		Prompt: draft.GatewayInput.Prompt, Operation: draft.Operation,
 		Provider: model.TaskProviderFilmGateway, Model: resolution.channelModel.ModelKey,
@@ -144,7 +144,7 @@ func (s *Service) SubmitFilmGenerationTask(userID string, projectID string, arti
 	}
 	patch := model.CanvasProjectionPatch{
 		ID: newID(), UserID: userID, CanvasID: canvasID, NodeID: canvasNodeID,
-		PatchKind: CanvasProjectionPatchKindFilmGenerationTask,
+		PatchKind:       CanvasProjectionPatchKindFilmGenerationTask,
 		TargetProjectID: draft.ProjectID, TargetArtifactID: draft.GenerationRequestArtifactID,
 		TargetArtifactVersion: draft.GenerationRequestArtifactVersion, TaskID: task.ID,
 		CreatedAt: now, UpdatedAt: now,
@@ -153,6 +153,7 @@ func (s *Service) SubmitFilmGenerationTask(userID string, projectID string, arti
 		UserID: userID, ProjectID: draft.ProjectID, CanvasPayloadJSON: canvas.PayloadJSON,
 		GenerationRequestArtifact: *artifact, Channel: *resolution.channel, ChannelModel: *resolution.channelModel,
 		Task: &task, Attempt: attempt, BillingOrder: billingOrder, Patch: &patch, ActiveTaskLimit: policy.Task.ActiveTaskLimit,
+		SceneID: draft.SceneID, SpatialGateArtifactID: draft.SpatialGateArtifactID, SpatialGateArtifactVersion: draft.SpatialGateArtifactVersion,
 	}
 	created, err := s.createFilmGenerationTaskWithinStorageQuota(write, policy)
 	if err != nil {
@@ -195,11 +196,11 @@ func (s *Service) existingFilmGenerationSubmission(userID string, canvasID strin
 
 func filmGenerationSubmission(draft FilmGenerationTaskDraft, task model.Task, patch model.CanvasProjectionPatch, created bool) *FilmGenerationTaskSubmission {
 	return &FilmGenerationTaskSubmission{
-		SchemaVersion: FilmGenerationTaskSubmissionSchemaVersion,
-		GenerationRequestArtifactID: draft.GenerationRequestArtifactID,
+		SchemaVersion:                    FilmGenerationTaskSubmissionSchemaVersion,
+		GenerationRequestArtifactID:      draft.GenerationRequestArtifactID,
 		GenerationRequestArtifactVersion: draft.GenerationRequestArtifactVersion,
-		RequestFingerprint: draft.RequestFingerprint,
-		CanvasID: patch.CanvasID, CanvasNodeID: patch.NodeID,
+		RequestFingerprint:               draft.RequestFingerprint,
+		CanvasID:                         patch.CanvasID, CanvasNodeID: patch.NodeID,
 		ProjectionRevision: patch.Revision, Created: created, IdempotentReplay: !created,
 		Task: taskForOutput(task),
 	}
@@ -211,41 +212,48 @@ func filmGenerationRuntimeInput(draft FilmGenerationTaskDraft, resolution filmGe
 		return nil, err
 	}
 	metadata := map[string]any{
-		"domainProjectId": draft.ProjectID,
-		"canvasId": canvasID,
-		"canvasNodeId": canvasNodeID,
-		"unitId": draft.UnitID,
-		"sceneId": draft.SceneID,
-		"shotId": draft.ShotID,
-		"outputIntent": draft.GatewayInput.OutputIntent,
-		"requestFingerprint": draft.RequestFingerprint,
-		"generationRequestArtifactId": draft.GenerationRequestArtifactID,
+		"domainProjectId":                  draft.ProjectID,
+		"canvasId":                         canvasID,
+		"canvasNodeId":                     canvasNodeID,
+		"unitId":                           draft.UnitID,
+		"sceneId":                          draft.SceneID,
+		"shotId":                           draft.ShotID,
+		"outputIntent":                     draft.GatewayInput.OutputIntent,
+		"requestFingerprint":               draft.RequestFingerprint,
+		"generationRequestArtifactId":      draft.GenerationRequestArtifactID,
 		"generationRequestArtifactVersion": draft.GenerationRequestArtifactVersion,
-		"promptArtifactId": draft.GatewayInput.PromptArtifactID,
-		"promptArtifactVersion": draft.GatewayInput.PromptArtifactVersion,
-		"sourceRefs": append([]string(nil), draft.GatewayInput.SourceRefs...),
+		"promptArtifactId":                 draft.GatewayInput.PromptArtifactID,
+		"promptArtifactVersion":            draft.GatewayInput.PromptArtifactVersion,
+		"sourceRefs":                       append([]string(nil), draft.GatewayInput.SourceRefs...),
+		"spatialPackArtifactId":            draft.GatewayInput.SpatialPackArtifactID,
+		"spatialPackArtifactVersion":       draft.GatewayInput.SpatialPackArtifactVersion,
+		"spatialGateArtifactId":            draft.GatewayInput.SpatialGateArtifactID,
+		"spatialGateArtifactVersion":       draft.GatewayInput.SpatialGateArtifactVersion,
+		"cameraAnchorId":                   draft.GatewayInput.CameraAnchorID,
+		"viewId":                           draft.GatewayInput.ViewID,
+		"lockedSceneAssetPack":             draft.GatewayInput.SpatialContext,
 		"providerRoute": map[string]any{
-			"channelId": resolution.channel.ID,
-			"channelModelId": resolution.channelModel.ID,
-			"model": resolution.channelModel.ModelKey,
-			"capability": resolution.channelModel.Capability,
-			"protocol": string(resolution.channelModel.Protocol),
+			"channelId":         resolution.channel.ID,
+			"channelModelId":    resolution.channelModel.ID,
+			"model":             resolution.channelModel.ModelKey,
+			"capability":        resolution.channelModel.Capability,
+			"protocol":          string(resolution.channelModel.Protocol),
 			"capabilityVersion": resolution.channelModel.CapabilityVersion,
-			"priceVersion": resolution.channelModel.PriceVersion,
+			"priceVersion":      resolution.channelModel.PriceVersion,
 		},
 	}
 	for key, value := range executionMetadata {
 		metadata[key] = value
 	}
 	return map[string]any{
-		"mode": draft.GatewayInput.Mode,
-		"prompt": draft.GatewayInput.Prompt,
-		"config": config,
-		"metadata": metadata,
-		"canvasId": canvasID,
-		"canvasNodeId": canvasNodeID,
-		"domainProjectId": draft.ProjectID,
-		"generationRequestArtifactId": draft.GenerationRequestArtifactID,
+		"mode":                             draft.GatewayInput.Mode,
+		"prompt":                           draft.GatewayInput.Prompt,
+		"config":                           config,
+		"metadata":                         metadata,
+		"canvasId":                         canvasID,
+		"canvasNodeId":                     canvasNodeID,
+		"domainProjectId":                  draft.ProjectID,
+		"generationRequestArtifactId":      draft.GenerationRequestArtifactID,
 		"generationRequestArtifactVersion": draft.GenerationRequestArtifactVersion,
 	}, nil
 }
@@ -343,7 +351,7 @@ func (s *Service) filmGenerationBillingOrder(userID string, task *model.Task, dr
 		quantity = draft.GatewayInput.DurationMS / 1000
 	}
 	return s.newBillingOrder(
-		userID, task.ID, filmGenerationIdempotencyKey(userID, task.ProjectID, canvasNodeID, draft.GenerationRequestArtifactID, draft.GenerationRequestArtifactVersion),
+		userID, task.ID, filmGenerationIdempotencyKey(userID, task.CanvasID, canvasNodeID, draft.GenerationRequestArtifactID, draft.GenerationRequestArtifactVersion),
 		resolution.channel.ID, resolution.channelModel.ModelKey, draft.GatewayInput.Mode, draft.Operation, quantity, tokenBillingEstimate{},
 	)
 }

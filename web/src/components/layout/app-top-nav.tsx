@@ -6,14 +6,17 @@ import { ModelSetupGuide } from "@/components/layout/model-setup-guide";
 import { WorkspaceSidebarFooter } from "@/components/layout/workspace-sidebar-footer";
 import { navigationTools, type NavigationToolSlug } from "@/constant/navigation-tools";
 import { cn } from "@/lib/utils";
-import { refreshFeatureAvailability } from "@/lib/user-session";
+import { refreshFeatureAvailability, refreshSystemChannels } from "@/lib/user-session";
 import { isSpatialWorkbenchPath } from "@/lib/workspace-routes";
 import { useUserStore } from "@/stores/use-user-store";
+
+const SYSTEM_CHANNEL_REFRESH_INTERVAL_MS = 5 * 60_000;
 
 export function AppWorkspaceShell({ children }: { children: ReactNode }) {
     const { pathname } = useLocation();
     const navigate = useNavigate();
     const user = useUserStore((state) => state.user);
+    const userId = user?.id || "";
     const features = useUserStore((state) => state.features);
     const [mobileSidebarExpanded, setMobileSidebarExpanded] = useState(false);
     const scrollRef = useRef<HTMLElement>(null);
@@ -69,6 +72,29 @@ export function AppWorkspaceShell({ children }: { children: ReactNode }) {
             window.removeEventListener("focus", refresh);
         };
     }, [user]);
+
+    useEffect(() => {
+        if (!userId) return;
+        let refreshing = false;
+        const refresh = () => {
+            if (document.visibilityState !== "visible" || refreshing) return;
+            refreshing = true;
+            void refreshSystemChannels()
+                .catch((error) => console.warn("系统模型目录刷新失败", error))
+                .finally(() => {
+                    refreshing = false;
+                });
+        };
+        const handleVisibility = () => refresh();
+        const timer = window.setInterval(refresh, SYSTEM_CHANNEL_REFRESH_INTERVAL_MS);
+        window.addEventListener("focus", refresh);
+        document.addEventListener("visibilitychange", handleVisibility);
+        return () => {
+            window.clearInterval(timer);
+            window.removeEventListener("focus", refresh);
+            document.removeEventListener("visibilitychange", handleVisibility);
+        };
+    }, [userId]);
 
     return (
         <>

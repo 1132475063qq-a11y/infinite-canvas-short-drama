@@ -6,7 +6,11 @@ type Task struct {
 	ID                        string               `json:"id" gorm:"primaryKey;size:36"`
 	UserID                    string               `json:"userId" gorm:"index;size:36;index:idx_tasks_user_created,priority:1"`
 	SessionID                 string               `json:"sessionId" gorm:"index;size:36"`
+	// ProjectID is retained for legacy API compatibility. Film generation
+	// uses the explicit domain and canvas identifiers below.
 	ProjectID                 string               `json:"projectId" gorm:"index;size:80"`
+	DomainProjectID           string               `json:"domainProjectId,omitempty" gorm:"index;size:36"`
+	CanvasID                  string               `json:"canvasId,omitempty" gorm:"index;size:80"`
 	Type                      string               `json:"type" gorm:"index;size:64"`
 	Status                    TaskStatus           `json:"status" gorm:"index;size:24;index:idx_tasks_status_created,priority:1;index:idx_tasks_claim,priority:1;index:idx_tasks_provider_cancel,priority:1"`
 	Stage                     string               `json:"stage" gorm:"size:80"`

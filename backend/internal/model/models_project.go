@@ -198,20 +198,25 @@ type Shot struct {
 // FilmArtifact 保存可版本化的影视生产事实。Canvas 仅持有当前 Artifact 的 DomainRef，
 // Agent、Inspector 与后续 QC 共用同一事实源，避免节点 payload 演变成第二套数据库。
 type FilmArtifact struct {
-	ID                 string    `json:"id" gorm:"primaryKey;size:36"`
-	ProjectID          string    `json:"projectId" gorm:"index;size:36;uniqueIndex:idx_film_artifact_version,priority:1"`
-	UnitID             string    `json:"unitId,omitempty" gorm:"index;size:36"`
-	SceneID            string    `json:"sceneId,omitempty" gorm:"index;size:36"`
-	ShotID             string    `json:"shotId,omitempty" gorm:"index;size:36;uniqueIndex:idx_film_artifact_version,priority:2"`
-	ArtifactType       string    `json:"artifactType" gorm:"index;size:64;uniqueIndex:idx_film_artifact_version,priority:3"`
-	ObjectVersion      int       `json:"objectVersion" gorm:"uniqueIndex:idx_film_artifact_version,priority:4"`
-	Status             string    `json:"status" gorm:"index;size:24"`
-	ResponsibleAgentID string    `json:"responsibleAgentId,omitempty" gorm:"index;size:80"`
-	PayloadJSON        string    `json:"payloadJson" gorm:"type:text"`
-	SourceRefsJSON     string    `json:"sourceRefsJson" gorm:"type:text"`
-	AuthorityRefsJSON  string    `json:"authorityRefsJson" gorm:"type:text"`
-	CreatedAt          time.Time `json:"createdAt"`
-	UpdatedAt          time.Time `json:"updatedAt"`
+	ID        string `json:"id" gorm:"primaryKey;size:36"`
+	ProjectID string `json:"projectId" gorm:"index;size:36"`
+	UnitID    string `json:"unitId,omitempty" gorm:"index;size:36"`
+	SceneID   string `json:"sceneId,omitempty" gorm:"index;size:36"`
+	// Scope/ScopeID make project, unit, scene and shot artifacts share one
+	// append-only versioning contract. ShotID remains for backwards-compatible
+	// reads and for the existing canvas projection references.
+	Scope              FilmArtifactScope `json:"scope,omitempty" gorm:"index;size:16"`
+	ScopeID            string            `json:"scopeId,omitempty" gorm:"index;size:36"`
+	ShotID             string            `json:"shotId,omitempty" gorm:"index;size:36"`
+	ArtifactType       string            `json:"artifactType" gorm:"index;size:64"`
+	ObjectVersion      int               `json:"objectVersion" gorm:"index"`
+	Status             string            `json:"status" gorm:"index;size:24"`
+	ResponsibleAgentID string            `json:"responsibleAgentId,omitempty" gorm:"index;size:80"`
+	PayloadJSON        string            `json:"payloadJson" gorm:"type:text"`
+	SourceRefsJSON     string            `json:"sourceRefsJson" gorm:"type:text"`
+	AuthorityRefsJSON  string            `json:"authorityRefsJson" gorm:"type:text"`
+	CreatedAt          time.Time         `json:"createdAt"`
+	UpdatedAt          time.Time         `json:"updatedAt"`
 }
 
 type ShotAssetReference struct {
@@ -277,6 +282,18 @@ type CanvasProject struct {
 	UpdatedAt   time.Time `json:"updatedAt" gorm:"index:idx_canvas_projects_user_updated,priority:2"`
 }
 
+const (
+	CanvasProjectionPatchKindFilmGenerationTask   = "film_generation_task"
+	CanvasProjectionPatchKindFilmGenerationResult = "film_generation_result"
+	FilmGenerationResultCanvasNodeIDPrefix        = "film-generation-result:"
+)
+
+// FilmGenerationResultCanvasNodeID is stable across browser refreshes and
+// server projection reads. The Task is the durable owner of its derived media.
+func FilmGenerationResultCanvasNodeID(taskID string) string {
+	return FilmGenerationResultCanvasNodeIDPrefix + taskID
+}
+
 // CanvasProjectionPatch keeps server-owned runtime bindings separate from the
 // browser-synced CanvasProject document. A later full-document client sync
 // must therefore not remove or forge a Task binding created by the Provider
@@ -299,6 +316,8 @@ type CanvasProjectionPatch struct {
 	GenerationAttemptID string `json:"generationAttemptId,omitempty" gorm:"-"`
 	ProviderJobID       string `json:"providerJobId,omitempty" gorm:"-"`
 	ResultID            string `json:"resultId,omitempty" gorm:"-"`
+	ResultURL           string `json:"resultUrl,omitempty" gorm:"-"`
+	ResultPayload       string `json:"resultPayload,omitempty" gorm:"-"`
 }
 
 type CanvasShare struct {
