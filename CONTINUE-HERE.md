@@ -1,6 +1,15 @@
 # AI Creative Studio（短剧 + 电商）无限画布：继续开发入口
 
-更新时间：2026-08-17
+更新时间：2026-08-18
+
+## 当前快照（2026-08-18）
+
+- 分支 `codex/phase4-film-nodes` 与 GitHub 已同步，最新文档验收提交为 `5cf6ec5`。
+- 后端 `go test ./... -count=1` 与 `go vet ./...` 通过；Web 105 项测试、TypeScript 检查和生产构建通过。
+- 登录态 Spatial 编辑器已完成草稿/可生成保存、`UNCERTAIN` / `FAIL` / `NEEDS_YOU` / `PASS` 状态流转和双页面 `409` 版本冲突验收。
+- 场景 Pack 更新后，旧 Generation Request 执行面板会阻止提交并提示重新编译 Prompt Pack；未创建 Task、未预留积分、未调用 Provider。
+- 视频 Provider、真实视频结果播放/刷新回写、自动视觉 QC、端用户 Retry/QC UI、跨 Scene Location/Opening 和数据库 Golden Project 仍未完成；视频继续禁止测试。
+- 当前权威待办与验收细节以 `docs/content/docs/pending-test.mdx`、`docs/content/docs/todo.mdx` 为准。
 
 ## 1. 先从这里开始
 
@@ -135,7 +144,7 @@ web/src/pages/canvas/canvas-project-top-bar.tsx
 web/test/production-ui-shell.test.ts
 ```
 
-### Phase 4/5：影视生产节点完成，Provider Gateway 单渠道事实链已落代码、待运行验证
+### Phase 4/5：影视生产节点与 Provider Gateway 单渠道事实链
 
 已完成本批：
 
@@ -168,7 +177,7 @@ web/test/production-ui-shell.test.ts
 - 场景空间资产系统已加入 SceneManifest、Topology、FloorPlan、Anchor、View Coverage、Look Card 和结构化 Gate。Gate 依赖结构事实与人工证据，不是后端自动视觉识别。
 - 空间 Pack 保存现在要求 `expectedVersion`，过期页面返回冲突；删除领域项目会拦截活动或状态待核对的执行；Film Task 使用显式 `domainProjectId` / `canvasId`，旧数据由 Attempt 回填。
 
-尚未完成：视频 Provider 验收、自动视觉 QC、端用户 Retry/QC UI、跨 Scene 的项目级 Location/开口连续性，以及《寄生广告》数据库 Golden Project。
+尚未完成：视频 Provider 验收、真实视频结果媒体回写验收、自动视觉 QC、端用户 Retry/QC UI、跨 Scene 的项目级 Location/开口连续性，以及《寄生广告》数据库 Golden Project。
 
 ### Ecommerce Creative Studio：Prototype A Provider-free 合同阶段
 
@@ -313,7 +322,7 @@ LOCAL_UID=$(id -u) LOCAL_GID=$(id -g) docker compose -f docker-compose.dev.yml u
 
 这些属于后续阶段，不得提前宣称完成。
 
-## 6. 下一步：Film Phase 5 与 Ecommerce Prototype A 并行但隔离
+## 6. 下一步：Film 收尾与 Ecommerce Prototype A 并行但隔离
 
 不要越过当前单渠道原子边界直接接入多家 Provider 或完整生成系统。最新版详细规划明确规定：
 
@@ -334,7 +343,7 @@ Ecommerce：
 → GO / MODIFY / STOP
 ```
 
-Phase 3 已通过自动与浏览器验收，下一会话不要重做 UI Shell。Phase 0 仍需另补数据库 schema 快照和恢复说明。
+Phase 3 已通过自动与浏览器验收，下一会话不要重做 UI Shell。Phase 0 仍需另补数据库 schema 快照和恢复说明；当前 Film 先进入 Retry/QC UI 与 Golden Project 的非 Provider 切片。
 
 ### Phase 4 已完成 / Phase 5 当前边界
 
@@ -351,9 +360,10 @@ Phase 3 已通过自动与浏览器验收，下一会话不要重做 UI Shell。
 
 下一批只可讨论：
 
-- 先为 Inspector 增加明确的费用确认、提交和执行历史交互；读取 Inspector 不得自动提交。
-- 再使用非生产测试输入完成一个受控单 Provider 接受测试，明确区分 API 状态、Result 持久化和真实媒体质量。
-- 不要同时接入多家 Provider、QC/Retry 全链或 Agent Runtime。
+- 在不调用 Provider 的前提下，设计并实现端用户 Retry/QC UI 的最小数据与权限闭环；Retry 必须保留旧 Attempt，QC 必须是人工决策事实。
+- 建立数据库支持的《寄生广告》Golden Project，覆盖项目、场景、镜头、空间 Pack、Prompt Pack 和 Generation Request 的版本链。
+- 真实视频 Provider 验收只有在用户明确确认预算、并发、下载鉴权和退款策略后才可执行。
+- 不要同时接入多家 Provider、复杂 Agent Runtime 或 Full Ecommerce V1。
 
 优先复用并增量升级：
 
@@ -400,5 +410,5 @@ docs/production-canvas/ecommerce-prototype-addendum.md 和
 检查当前分支、Git 状态和最近提交，不要重做 Phase 1/Phase 2。
 Film Phase 3 已完成并通过 78/78 自动测试与三档浏览器验收，不要重做。
 Phase 4 已完成 Scene、Shot、Character、Location、Prop、Acting、Prompt Pack、Generation Request、只读 Task Draft、只读 Provider Route Catalog、revision-safe Canvas Projection Patch，以及图片/视频单渠道原子 Task 提交边界。
-Phase 5 的 GenerationAttempt / ProviderJob / Film Result 数据合同、事务写入、Retry 历史、只读执行 API、Canvas 运行时投影和费用确认提交 UI 已写入当前分支；受控图片接受测试已完成，但本次空间、视频投影与渠道目录改动仍需针对性验证，视频尚未验收。Film 下一步先完成这些回归，再做端用户 Retry/QC UI、跨 Scene 连续性与数据库 Golden Project；不直接接入多家 Provider。Ecommerce 已完成 Prototype A 无 Provider 合同骨架和 Provider Evaluation 记录合同，下一步只在用户提供真实渠道/素材后执行 Bake-off。两条线都不要提前接入 Full Ecommerce V1 或复杂 Agent Runtime。
+Phase 5 的 GenerationAttempt / ProviderJob / Film Result 数据合同、事务写入、Retry 历史、只读执行 API、Canvas 运行时投影和费用确认提交 UI 已写入当前分支；受控图片接受测试、空间编辑器写入验收和旧空间版本阻断验收已完成，但视频尚未验收。Film 下一步做非 Provider 的端用户 Retry/QC UI 与数据库 Golden Project；不直接接入多家 Provider。Ecommerce 已完成 Prototype A 无 Provider 合同骨架和 Provider Evaluation 记录合同，下一步只在用户提供真实渠道/素材后执行 Bake-off。两条线都不要提前接入 Full Ecommerce V1 或复杂 Agent Runtime。
 ```

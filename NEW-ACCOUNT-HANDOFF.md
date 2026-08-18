@@ -17,7 +17,7 @@
 
 ## 2. 本轮已落地：Film Provider Gateway 执行事实链
 
-Provider Gateway 的图片链路已经完成真实浏览器验收。空间连续性、视频结果投影和渠道目录同步已写入代码与测试合同，但当前分支仍需要针对性后端测试、前端构建与登录态浏览器回归；视频 Provider 没有验收。
+Provider Gateway 的图片链路已经完成真实浏览器验收。当前分支的后端回归、Web 测试/构建和登录态空间编辑器写入验收也已完成；视频结果投影与渠道目录同步仍只有代码/测试合同，视频 Provider 没有验收。
 
 ### 已实现的后端事实源与事务边界
 
@@ -56,12 +56,12 @@ Provider Gateway 的图片链路已经完成真实浏览器验收。空间连续
 
 ## 4. 仍未完成：严格的下一步顺序
 
-### Film：先完成一条可验收的生成链
+### Film：当前阶段收尾与下一步
 
-1. **复跑本轮架构修复**：验证空间 Pack 双页面并发冲突、活动任务删除门禁、Task 双 ID 迁移与全部现有回归。
-2. **浏览器验收空间编辑器**：新建、保存、ready/locked、冲突刷新、Gate FAIL/UNCERTAIN/PASS 和 Generation Request 门禁。
-3. **补跨 Scene 的 Location/开口身份**：只有确有多场景连续性需求时再增加项目级 Location/Opening ID，不把 SceneHierarchy 误报为已实现。
-4. **再做端用户 Retry/QC UI 与数据库 Golden Project**。视频保持禁测，除非用户另行明确授权。
+1. **已完成**：空间 Pack 双页面并发冲突、Gate 状态流转、Generation Request 旧空间版本阻断、活动任务删除门禁、Task 双 ID 迁移和当前工作树回归。
+2. **下一步**：在不调用 Provider 的前提下设计端用户 Retry/QC UI 与数据库 Golden Project；先冻结数据/权限/费用边界，再实现最小可验收切片。
+3. **条件项**：只有确有跨 Scene 连续性需求时才增加项目级 Location/Opening ID，不把 SceneHierarchy 误报为已实现。
+4. **视频保持禁测**，除非用户另行明确授权预算、并发、下载鉴权和退款策略。
 
 当前禁止：一开始接多家 Provider、前端保存 API Key、提前实现复杂 Agent Runtime、多人协作或 Full Ecommerce V1。
 
@@ -96,7 +96,7 @@ Provider Gateway 的图片链路已经完成真实浏览器验收。空间连续
 
 先以当前本地文件和 `git diff` 为事实，不要执行会覆盖本地改动的 pull/reset/checkout。Provider Gateway 图片真实链路已经验收，视频未测试。
 
-下一步先复跑空间 Pack 乐观锁、项目删除门禁和 Task 双 ID 迁移测试，再做登录态空间编辑器验收。Film 与 Ecommerce Domain 必须隔离；不要提前接视频、Full Ecommerce V1 或复杂 Agent Runtime。
+当前已完成空间 Pack 乐观锁、项目删除门禁、Task 双 ID 迁移测试和登录态空间编辑器验收。下一次从端用户 Retry/QC UI 与数据库 Golden Project 的设计/实现开始；Film 与 Ecommerce Domain 必须隔离，不要提前接视频、Full Ecommerce V1 或复杂 Agent Runtime。
 ```
 
 ## 6. 新账号恢复步骤
