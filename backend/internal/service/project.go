@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"infinite-canvas/backend/internal/model"
+	"infinite-canvas/backend/internal/repository"
 
 	"gorm.io/gorm"
 )
@@ -74,8 +75,11 @@ type ProjectDetail struct {
 	CanvasUnitLinks []model.CanvasUnitLink        `json:"canvasUnitLinks"`
 	Assets          []ProjectAssetSummary         `json:"assets"`
 	Workflows       []ProjectWorkflowDetail       `json:"workflows"`
+	Scenes          []model.Scene                 `json:"scenes"`
 	Shots           []model.Shot                  `json:"shots"`
-	ShotReferences  []model.ShotAssetReference    `json:"shotReferences"`
+	FilmArtifacts      []model.FilmArtifact         `json:"filmArtifacts"`
+	EcommerceArtifacts []model.EcommerceArtifact   `json:"ecommerceArtifacts"`
+	ShotReferences     []model.ShotAssetReference   `json:"shotReferences"`
 	AssetCandidates []model.ProjectAssetCandidate `json:"assetCandidates"`
 }
 
@@ -142,7 +146,36 @@ func (s *Service) ProjectDetail(userID string, id string) (ProjectDetail, error)
 	if err != nil {
 		return ProjectDetail{}, err
 	}
+	scenes, err := s.repo.ProjectScenes(project.ID)
+	if err != nil {
+		return ProjectDetail{}, err
+	}
 	shots, err := s.repo.ProjectShots(project.ID)
+	if err != nil {
+		return ProjectDetail{}, err
+	}
+	contractsAdded, err := s.ensureLegacyShotContracts(project.ID, shots)
+	if err != nil {
+		return ProjectDetail{}, err
+	}
+	if contractsAdded {
+		if err := s.repo.BumpProjectRevision(project.ID); err != nil {
+			return ProjectDetail{}, err
+		}
+		project, err = s.repo.ProjectForUser(userID, id)
+		if err != nil {
+			return ProjectDetail{}, err
+		}
+		shots, err = s.repo.ProjectShots(project.ID)
+		if err != nil {
+			return ProjectDetail{}, err
+		}
+	}
+	filmArtifacts, err := s.repo.ProjectFilmArtifacts(project.ID)
+	if err != nil {
+		return ProjectDetail{}, err
+	}
+	ecommerceArtifacts, err := s.repo.ProjectEcommerceArtifacts(project.ID)
 	if err != nil {
 		return ProjectDetail{}, err
 	}
@@ -154,7 +187,45 @@ func (s *Service) ProjectDetail(userID string, id string) (ProjectDetail, error)
 	if err != nil {
 		return ProjectDetail{}, err
 	}
-	return ProjectDetail{Project: *project, Units: units, Canvases: canvases, CanvasUnitLinks: canvasUnitLinks, Assets: assets, Workflows: workflows, Shots: shots, ShotReferences: shotReferences, AssetCandidates: candidates}, nil
+	return ProjectDetail{Project: *project, Units: units, Canvases: canvases, CanvasUnitLinks: canvasUnitLinks, Assets: assets, Workflows: workflows, Scenes: scenes, Shots: shots, FilmArtifacts: filmArtifacts, EcommerceArtifacts: ecommerceArtifacts, ShotReferences: shotReferences, AssetCandidates: candidates}, nil
+}
+
+// ensureLegacyShotContracts promotes pre-Phase-4 shots into the same immutable
+// contract model used by new shots. The migration is idempotent because only
+// shots without a current artifact pointer are considered.
+func (s *Service) ensureLegacyShotContracts(projectID string, shots []model.Shot) (bool, error) {
+	changed := false
+	for index := range shots {
+		shot := shots[index]
+		if shot.ContractArtifactID != "" && shot.ContractVersion > 0 {
+			continue
+		}
+		payload, err := json.Marshal(defaultShotContract(shot.Title, shot.DurationMs))
+		if err != nil {
+			return false, err
+		}
+		now := time.Now()
+		artifact := model.FilmArtifact{
+			ID:                newID(),
+			ProjectID:         projectID,
+			UnitID:            shot.UnitID,
+			SceneID:           shot.SceneID,
+			ShotID:            shot.ID,
+			ArtifactType:      "shot_contract",
+			Status:            shot.Status,
+			PayloadJSON:       string(payload),
+			SourceRefsJSON:    "[]",
+			AuthorityRefsJSON: "[]",
+			CreatedAt:         now,
+			UpdatedAt:         now,
+		}
+		shot.UpdatedAt = now
+		if err := s.repo.SaveShotWithContract(&shot, false, &artifact); err != nil {
+			return false, err
+		}
+		changed = true
+	}
+	return changed, nil
 }
 
 func (s *Service) CreateProject(userID string, req CreateProjectRequest) (model.Project, error) {
@@ -165,9 +236,9 @@ func (s *Service) CreateProject(userID string, req CreateProjectRequest) (model.
 	if name == "" {
 		return model.Project{}, BadAuthRequest("项目名称不能为空")
 	}
-	projectType := strings.TrimSpace(req.Type)
-	if projectType == "" {
-		projectType = "short-drama"
+	projectType, err := normalizeProjectType(req.Type)
+	if err != nil {
+		return model.Project{}, err
 	}
 	aspectRatio := strings.TrimSpace(req.AspectRatio)
 	if aspectRatio == "" {
@@ -208,7 +279,11 @@ func (s *Service) UpdateProject(userID string, id string, req UpdateProjectReque
 		project.Name = name
 	}
 	if value := strings.TrimSpace(req.Type); value != "" {
-		project.Type = value
+		projectType, typeErr := normalizeProjectType(value)
+		if typeErr != nil {
+			return model.Project{}, typeErr
+		}
+		project.Type = projectType
 	}
 	if value := strings.TrimSpace(req.AspectRatio); value != "" {
 		project.AspectRatio = value
@@ -246,11 +321,30 @@ func (s *Service) UpdateProject(userID string, id string, req UpdateProjectReque
 	return *project, nil
 }
 
+func normalizeProjectType(value string) (string, error) {
+	projectType := strings.TrimSpace(value)
+	if projectType == "" {
+		return model.ProjectTypeShortDrama, nil
+	}
+	switch projectType {
+	case model.ProjectTypeShortDrama, model.ProjectTypeEcommerce:
+		return projectType, nil
+	default:
+		return "", BadAuthRequest("不支持的项目类型")
+	}
+}
+
 func (s *Service) DeleteProject(userID string, id string) error {
 	if _, err := s.repo.ProjectForUser(userID, id); err != nil {
 		return err
 	}
-	return s.repo.DeleteProject(userID, id)
+	if err := s.repo.DeleteProject(userID, id); err != nil {
+		if errors.Is(err, repository.ErrProjectHasUnsettledTasks) {
+			return Conflict("项目仍有排队、执行中或状态待核对的生成任务，请先取消任务并等待渠道与账务状态明确后再删除")
+		}
+		return err
+	}
+	return nil
 }
 
 func (s *Service) CreateProjectUnit(userID string, projectID string, req CreateProjectUnitRequest) (model.ProjectUnit, error) {
@@ -483,7 +577,8 @@ func IsProjectNotFound(err error) bool {
 	return errors.Is(err, gorm.ErrRecordNotFound)
 }
 
-// 任务仍以画布 ID 作为 projectId；写入前必须解析到业务项目并阻止归档项目继续生成。
+// Legacy tasks may still carry either ID in projectId. New Film tasks pass an
+// explicit DomainProjectID or CanvasID through taskActiveScopeID.
 func (s *Service) ensureTaskProjectActive(userID string, canvasOrProjectID string) error {
 	id := strings.TrimSpace(canvasOrProjectID)
 	if id == "" {
@@ -515,4 +610,14 @@ func (s *Service) ensureTaskProjectActive(userID string, canvasOrProjectID strin
 		return BadAuthRequest("项目已归档，无法创建生成任务")
 	}
 	return nil
+}
+
+func taskActiveScopeID(task model.Task) string {
+	if strings.TrimSpace(task.DomainProjectID) != "" {
+		return task.DomainProjectID
+	}
+	if strings.TrimSpace(task.CanvasID) != "" {
+		return task.CanvasID
+	}
+	return task.ProjectID
 }

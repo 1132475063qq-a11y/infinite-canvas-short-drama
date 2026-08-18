@@ -91,6 +91,23 @@ func (s *Service) createTaskWithinStorageQuota(task *model.Task, billingOrder *m
 	return s.repo.CreateTaskWithActiveLimit(task, policy.Task.ActiveTaskLimit)
 }
 
+func (s *Service) retryTaskWithinStorageQuota(userID string, taskID string, billingOrder *model.BillingOrder, attempt *model.GenerationAttempt, policy RuntimePolicySetting) (*model.Task, error) {
+	if attempt == nil {
+		return s.repo.RetryTaskWithBilling(userID, taskID, billingOrder, nil, policy.Task.ActiveTaskLimit)
+	}
+	s.storageMu.Lock()
+	defer s.storageMu.Unlock()
+	usage, err := s.repo.UserStorageUsage(userID)
+	if err != nil {
+		return nil, err
+	}
+	incomingBytes := int64(len(attempt.RequestFingerprint) + len(attempt.Model) + len(attempt.Capability) + len(attempt.Protocol) + len(attempt.Error))
+	if err := validateTaskDataGrowthQuotaWithPolicy(usage, incomingBytes, policy.Resource); err != nil {
+		return nil, err
+	}
+	return s.repo.RetryTaskWithBilling(userID, taskID, billingOrder, attempt, policy.Task.ActiveTaskLimit)
+}
+
 // 任务完成会同时扩张任务历史和 Agent 会话数据，必须在同一临界区核算并原子写入。
 func (s *Service) saveTaskCompletionWithinStorageQuota(task *model.Task, resultJSON []byte, opsJSON []byte, hasCanvasOps bool) error {
 	policy, err := s.RuntimePolicy()
@@ -111,6 +128,24 @@ func (s *Service) saveTaskCompletionWithinStorageQuota(task *model.Task, resultJ
 	var message *model.Message
 	results := make([]model.Result, 0, 2)
 	structuredDelta := int64(0)
+	completionTime := time.Now()
+	if task.Provider == model.TaskProviderFilmGateway {
+		if task.Attempts < 1 {
+			return repository.ErrGenerationAttemptMissing
+		}
+		attempt, attemptErr := s.repo.GenerationAttemptForTaskNumber(task.ID, task.Attempts)
+		if attemptErr != nil {
+			return attemptErr
+		}
+		previewURL, _ := taskMediaPreview(string(resultJSON), task.Type)
+		results = append(results, model.Result{
+			ID: newID(), UserID: task.UserID, TaskID: task.ID, AttemptID: attempt.ID,
+			DomainProjectID: attempt.DomainProjectID,
+			GenerationRequestArtifactID: attempt.GenerationRequestArtifactID,
+			GenerationRequestArtifactVersion: attempt.GenerationRequestArtifactVersion,
+			Kind: model.ResultKindFilmGeneration, URL: previewURL, Payload: string(resultJSON), CreatedAt: completionTime,
+		})
+	}
 	if task.SessionID != "" {
 		session, err = s.repo.SessionForUser(task.UserID, task.SessionID)
 		if err != nil {
@@ -148,7 +183,7 @@ func (s *Service) saveTaskCompletionWithinStorageQuota(task *model.Task, resultJ
 	completed.Progress = 100
 	completed.ResultJSON = string(resultJSON)
 	completed.InputJSON = publicInputJSON
-	completed.CompletedAt = ptr(time.Now())
+	completed.CompletedAt = ptr(completionTime)
 	if err := s.repo.SaveTaskCompletion(&completed, expectedStatus, session, message, results); err != nil {
 		return err
 	}

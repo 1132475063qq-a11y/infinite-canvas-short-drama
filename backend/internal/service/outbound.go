@@ -20,7 +20,7 @@ const (
 	maxOutboundHeaderCount   = 32
 	maxOutboundHeaderBytes   = 16 << 10
 	CustomRelayHeadersHeader = "X-Canvas-Upstream-Headers"
-	DefaultOutboundUserAgent = "InfiniteCanvas/1.0 (+https://github.com/ddcat-ai/open-ai-canvas)"
+	DefaultOutboundUserAgent = "InfiniteCanvas/1.0 (+https://github.com/1132475063qq-a11y/infinite-canvas-short-drama)"
 )
 
 type OutboundHeader struct {
@@ -241,6 +241,14 @@ func blockedOutboundHeader(name string) bool {
 	switch name {
 	case "authorization", "proxy-authorization", "cookie", "set-cookie", "host", "content-length", "content-type", "accept", "connection", "proxy-connection", "keep-alive", "transfer-encoding", "te", "trailer", "upgrade", "forwarded", "x-goog-api-key":
 		return true
+	}
+	// Provider credentials belong in the dedicated server-only channel fields,
+	// never in a custom header that would be echoed by the admin channel view
+	// or forwarded through the relay metadata.
+	for _, marker := range []string{"apikey", "api-key", "token", "secret", "credential", "password"} {
+		if strings.Contains(name, marker) {
+			return true
+		}
 	}
 	return strings.HasPrefix(name, "x-canvas-") || strings.HasPrefix(name, "x-forwarded-")
 }

@@ -18,22 +18,28 @@ func TestFeatureAvailabilityDefaultsToEnabled(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if setting.Configured || !setting.ShortDramaEnabled || !setting.TaskCenterEnabled || !setting.CreditsEnabled {
+	if setting.Configured || !setting.ShortDramaEnabled || !setting.TaskCenterEnabled || !setting.CreditsEnabled || setting.CustomChannelsEnabled {
 		t.Fatalf("FeatureAvailability() = %#v", setting)
+	}
+	if err := svc.RequireFeature(FeatureCustomChannels); err == nil {
+		t.Fatal("RequireFeature(customChannels) error = nil")
 	}
 }
 
 func TestUpdateFeatureAvailabilityPersistsAndAudits(t *testing.T) {
 	svc, db := newFeatureAvailabilityTestService(t)
 	actor := &model.User{ID: "admin-1", Role: model.UserRoleAdmin}
-	want := FeatureAvailability{ShortDramaEnabled: false, TaskCenterEnabled: true, CreditsEnabled: false}
+	want := FeatureAvailability{ShortDramaEnabled: false, TaskCenterEnabled: true, CreditsEnabled: false, CustomChannelsEnabled: true}
 
 	setting, err := svc.UpdateFeatureAvailability(actor, want)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !setting.Configured || setting.ShortDramaEnabled || !setting.TaskCenterEnabled || setting.CreditsEnabled {
+	if !setting.Configured || setting.ShortDramaEnabled || !setting.TaskCenterEnabled || setting.CreditsEnabled || !setting.CustomChannelsEnabled {
 		t.Fatalf("UpdateFeatureAvailability() = %#v", setting)
+	}
+	if err := svc.RequireFeature(FeatureCustomChannels); err != nil {
+		t.Fatalf("RequireFeature(customChannels) error = %v", err)
 	}
 	if err := svc.RequireFeature(FeatureShortDrama); err == nil {
 		t.Fatal("RequireFeature(shortDrama) error = nil")
@@ -55,7 +61,7 @@ func TestUpdateFeatureAvailabilityPersistsAndAudits(t *testing.T) {
 func TestTaskBillingOrderSkipsPricingWhenCreditsDisabled(t *testing.T) {
 	svc, _ := newFeatureAvailabilityTestService(t)
 	actor := &model.User{ID: "admin-1", Role: model.UserRoleAdmin}
-	if _, err := svc.UpdateFeatureAvailability(actor, FeatureAvailability{ShortDramaEnabled: true, TaskCenterEnabled: true, CreditsEnabled: false}); err != nil {
+	if _, err := svc.UpdateFeatureAvailability(actor, FeatureAvailability{ShortDramaEnabled: true, TaskCenterEnabled: true, CreditsEnabled: false, CustomChannelsEnabled: false}); err != nil {
 		t.Fatal(err)
 	}
 

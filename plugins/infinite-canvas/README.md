@@ -11,10 +11,10 @@
 把下面这段发给 Codex：
 
 ```text
-请从 https://github.com/ddcat-ai/open-ai-canvas.git 安装影策 Codex 插件。
-请 clone 仓库到 ~/plugins/open-ai-canvas，确认 .agents/plugins/marketplace.json 和
+请从 https://github.com/1132475063qq-a11y/infinite-canvas-short-drama.git 安装影策 Codex 插件。
+请 clone 仓库到 ~/plugins/infinite-canvas-short-drama，确认 .agents/plugins/marketplace.json 和
 plugins/infinite-canvas/.codex-plugin/plugin.json 都存在。然后运行
-codex plugin marketplace add ~/plugins/open-ai-canvas，
+codex plugin marketplace add ~/plugins/infinite-canvas-short-drama，
 再运行 codex plugin add infinite-canvas@infinite-canvas-local。
 安装后请校验插件，并告诉我是否需要开启一个新对话来加载新技能和 MCP 工具。
 ```
@@ -25,13 +25,13 @@ codex plugin marketplace add ~/plugins/open-ai-canvas，
 
 ```bash
 mkdir -p ~/plugins
-git clone https://github.com/ddcat-ai/open-ai-canvas.git ~/plugins/open-ai-canvas
+git clone --branch codex/phase4-film-nodes https://github.com/1132475063qq-a11y/infinite-canvas-short-drama.git ~/plugins/infinite-canvas-short-drama
 ```
 
 注册仓库 marketplace 并安装插件；如果使用已有仓库，请把路径替换为仓库的绝对路径：
 
 ```bash
-codex plugin marketplace add ~/plugins/open-ai-canvas
+codex plugin marketplace add ~/plugins/infinite-canvas-short-drama
 codex plugin add infinite-canvas@infinite-canvas-local
 ```
 

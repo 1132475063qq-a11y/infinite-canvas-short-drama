@@ -145,7 +145,8 @@ function ImageCapabilityEditor({ value, onChange, protocol, model, disabled }: R
                     <Field label="默认质量"><Select className="w-full" disabled={disabled} value={profile.quality.default} options={profile.quality.values.map((item) => ({ label: item, value: item }))} onChange={(defaultValue) => updateQuality({ default: defaultValue })} /></Field>
                 </div> : null}
                 <BooleanField label="透明背景" value={profile.transparentBackground} disabled={disabled} onChange={(transparentBackground) => update({ transparentBackground })} />
-                <div className="grid gap-2 sm:grid-cols-2">
+                <div className="grid gap-2 sm:grid-cols-3">
+                    <ParameterField label="n" description="发送固定 n=1 参数" supported={profile.countParameter?.supported !== false} disabled={disabled} onChange={(supported) => update({ countParameter: { supported } })} />
                     <ParameterField label="response_format" description="发送 b64_json 响应格式" supported={profile.responseFormat.supported} disabled={disabled} onChange={(supported) => update({ responseFormat: { supported } })} />
                     <ParameterField label="output_format" description="发送 PNG 输出格式" supported={profile.outputFormat.supported} disabled={disabled} onChange={(supported) => update({ outputFormat: { supported } })} />
                 </div>

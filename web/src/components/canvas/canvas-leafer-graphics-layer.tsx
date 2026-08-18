@@ -4,6 +4,7 @@ import { Group, Leafer, Path, Rect } from "leafer-ui";
 import { activeConnectionPath, canvasConnectionPath } from "@/components/canvas/canvas-connections";
 import { subscribeCanvasGraphicsViewportPreview, subscribeCanvasSelectionPreview } from "@/lib/canvas/canvas-live-viewport";
 import { calculateCanvasPreviewTransform, sameCanvasViewport, shouldRebaseCanvasRaster } from "@/lib/canvas/canvas-leafer-viewport";
+import { hasCanvasAlignmentGuide, type CanvasAlignmentGuides, type CanvasEqualGapGuide } from "@/lib/canvas/layout/layout-types";
 import type { CanvasTheme } from "@/lib/canvas-theme";
 import type { CanvasDisplayConnection, CanvasNodeData, ConnectionHandle, Position, SelectionBox, ViewportTransform } from "@/types/canvas";
 
@@ -24,7 +25,7 @@ type CanvasLeaferGraphicsLayerProps = {
     nodeById: Map<string, CanvasNodeData>;
     selectionBox: SelectionBox | null;
     selectedNodeBounds: NodeBounds;
-    alignmentGuides: { vertical?: number; horizontal?: number };
+    alignmentGuides: CanvasAlignmentGuides;
 };
 
 type LeaferScene = {
@@ -259,7 +260,7 @@ function syncViewport(viewport: ViewportTransform, width: number, height: number
     overlay.selectionBounds.set({ strokeWidth: 1 / scale, cornerRadius: 12 / scale });
     overlay.draft.set({ strokeWidth: 1.4 / scale, dashPattern: [8 / scale, 8 / scale] });
     overlay.guides.set({
-        visible: typeof props.alignmentGuides.vertical === "number" || typeof props.alignmentGuides.horizontal === "number",
+        visible: hasCanvasAlignmentGuide(props.alignmentGuides),
         path: guidePath(viewport, width, height, props.alignmentGuides),
         stroke: props.theme.accent.primary,
         strokeWidth: 1 / scale,
@@ -310,7 +311,7 @@ function syncSelectionBounds(rect: Rect, bounds: NonNullable<NodeBounds>, viewpo
     });
 }
 
-function guidePath(viewport: ViewportTransform, width: number, height: number, guides: { vertical?: number; horizontal?: number }) {
+function guidePath(viewport: ViewportTransform, width: number, height: number, guides: CanvasAlignmentGuides) {
     const scale = Math.max(viewport.k, 0.05);
     const left = -viewport.x / scale;
     const top = -viewport.y / scale;
@@ -319,7 +320,25 @@ function guidePath(viewport: ViewportTransform, width: number, height: number, g
     const commands: string[] = [];
     if (typeof guides.vertical === "number") commands.push(`M ${guides.vertical} ${top} L ${guides.vertical} ${bottom}`);
     if (typeof guides.horizontal === "number") commands.push(`M ${left} ${guides.horizontal} L ${right} ${guides.horizontal}`);
+    if (guides.equalGapX) commands.push(...equalGapPath(guides.equalGapX, 4 / scale));
+    if (guides.equalGapY) commands.push(...equalGapPath(guides.equalGapY, 4 / scale));
     return commands.join(" ");
+}
+
+function equalGapPath(guide: CanvasEqualGapGuide, cap: number) {
+    const { beforeStart, beforeEnd, afterStart, afterEnd, cross } = guide;
+    if (guide.axis === "x") {
+        return [
+            `M ${beforeStart} ${cross} L ${beforeEnd} ${cross}`,
+            `M ${afterStart} ${cross} L ${afterEnd} ${cross}`,
+            ...[beforeStart, beforeEnd, afterStart, afterEnd].map((x) => `M ${x} ${cross - cap} L ${x} ${cross + cap}`),
+        ];
+    }
+    return [
+        `M ${cross} ${beforeStart} L ${cross} ${beforeEnd}`,
+        `M ${cross} ${afterStart} L ${cross} ${afterEnd}`,
+        ...[beforeStart, beforeEnd, afterStart, afterEnd].map((y) => `M ${cross - cap} ${y} L ${cross + cap} ${y}`),
+    ];
 }
 
 function canvasPixelRatio() {

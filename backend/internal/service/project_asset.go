@@ -18,22 +18,33 @@ type UpdateProjectAssetCategoryRequest struct {
 }
 
 type CreateAssetVersionRequest struct {
+	Title          string `json:"title"`
 	Prompt         string `json:"prompt"`
 	DefinitionJSON string `json:"definitionJson"`
 	Note           string `json:"note"`
 }
 
 type ProjectAssetSummary struct {
-	ID               string                   `json:"id"`
-	Title            string                   `json:"title"`
-	MediaType        string                   `json:"mediaType"`
-	Category         model.AssetCategory      `json:"category"`
-	Status           model.AssetVersionStatus `json:"status"`
-	PrimaryVersionID string                   `json:"primaryVersionId,omitempty"`
-	VersionCount     int                      `json:"versionCount"`
-	Usages           []string                 `json:"usages"`
-	UpdatedAt        time.Time                `json:"updatedAt"`
-	Character        *CharacterCardSummary    `json:"character,omitempty"`
+	ID               string                      `json:"id"`
+	Title            string                      `json:"title"`
+	MediaType        string                      `json:"mediaType"`
+	Category         model.AssetCategory         `json:"category"`
+	Status           model.AssetVersionStatus    `json:"status"`
+	PrimaryVersionID string                      `json:"primaryVersionId,omitempty"`
+	VersionCount     int                         `json:"versionCount"`
+	Usages           []string                    `json:"usages"`
+	UpdatedAt        time.Time                   `json:"updatedAt"`
+	CurrentVersion   *ProjectAssetVersionSummary `json:"currentVersion,omitempty"`
+	Character        *CharacterCardSummary       `json:"character,omitempty"`
+}
+
+type ProjectAssetVersionSummary struct {
+	ID         string                   `json:"id"`
+	Version    int                      `json:"version"`
+	Status     model.AssetVersionStatus `json:"status"`
+	Definition map[string]any           `json:"definition"`
+	Note       string                   `json:"note"`
+	UpdatedAt  time.Time                `json:"updatedAt"`
 }
 
 type ProjectAssetFilter struct {
@@ -188,6 +199,13 @@ func (s *Service) UnlinkProjectAsset(userID string, projectID string, assetID st
 	if references > 0 {
 		return BadAuthRequest("素材仍被项目镜头引用，请先解除镜头用途")
 	}
+	sceneReferences, err := s.repo.ProjectAssetSceneReferenceCount(projectID, assetID)
+	if err != nil {
+		return err
+	}
+	if sceneReferences > 0 {
+		return BadAuthRequest("场地仍被场景引用，请先解除场景绑定")
+	}
 	if err := s.repo.DeleteProjectAssetLink(projectID, assetID); err != nil {
 		return err
 	}
@@ -288,6 +306,9 @@ func (s *Service) CreateProjectAssetVersion(userID string, projectID string, ass
 		return model.AssetVersion{}, err
 	}
 	asset.PrimaryVersionID = version.ID
+	if title := strings.TrimSpace(req.Title); title != "" {
+		asset.Title = title
+	}
 	asset.Status = model.AssetVersionStatusDraft
 	asset.UpdatedAt = now
 	if err := s.repo.UpdateAssetDomain(asset); err != nil {
@@ -462,6 +483,17 @@ func (s *Service) projectAssetSummary(userID string, projectID string, asset *mo
 		return ProjectAssetSummary{}, err
 	}
 	summary := ProjectAssetSummary{ID: asset.ID, Title: asset.Title, MediaType: asset.Kind, Category: asset.Category, Status: asset.Status, PrimaryVersionID: asset.PrimaryVersionID, VersionCount: len(versions), Usages: usages, UpdatedAt: asset.UpdatedAt}
+	for _, version := range versions {
+		if version.ID != asset.PrimaryVersionID {
+			continue
+		}
+		definition := map[string]any{}
+		if err := json.Unmarshal([]byte(version.DefinitionJSON), &definition); err != nil {
+			return ProjectAssetSummary{}, BadAuthRequest("资产当前版本设定格式无效")
+		}
+		summary.CurrentVersion = &ProjectAssetVersionSummary{ID: version.ID, Version: version.Version, Status: version.Status, Definition: definition, Note: version.Note, UpdatedAt: version.UpdatedAt}
+		break
+	}
 	if asset.Category == model.AssetCategoryCharacter && asset.PrimaryVersionID != "" {
 		card, cardErr := s.characterCard(userID, asset)
 		if cardErr != nil {

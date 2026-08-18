@@ -18,6 +18,7 @@ import {
     defaultConfig,
     filterModelsByCapability,
     modelOptionsFromChannels,
+    useEffectiveConfig,
     useConfigStore,
     type AiConfig,
     type ModelChannel,
@@ -57,19 +58,27 @@ export default function SettingsPage() {
     const navigate = useNavigate();
     const [searchParams, setSearchParams] = useSearchParams();
     const requestedSection = searchParams.get("section");
-    const [activeTab, setActiveTab] = useState<ConfigSectionKey>(isConfigSection(requestedSection) ? requestedSection : "channels");
+    const customChannelsEnabled = useUserStore((state) => state.features.customChannelsEnabled);
+    const initialSection = isConfigSection(requestedSection) && (requestedSection !== "channels" || customChannelsEnabled) ? requestedSection : customChannelsEnabled ? "channels" : "models";
+    const [activeTab, setActiveTab] = useState<ConfigSectionKey>(initialSection);
     const [loadingChannelIds, setLoadingChannelIds] = useState<string[]>([]);
     const [collapsedChannelIds, setCollapsedChannelIds] = useState<Set<string>>(new Set());
     const config = useConfigStore((state) => state.config);
+    const effectiveConfig = useEffectiveConfig();
     const updateConfig = useConfigStore((state) => state.updateConfig);
     const replaceConfig = useConfigStore((state) => state.replaceConfig);
     const shouldPromptContinue = searchParams.get("continue") === "1";
     const userId = useUserStore((state) => state.user?.id);
     const userChannels = config.channels.filter((channel) => channel.scope !== "system");
+    const visibleConfigSections = configSections.filter((section) => section.key !== "channels" || customChannelsEnabled);
 
     useEffect(() => {
-        if (isConfigSection(requestedSection)) setActiveTab(requestedSection);
-    }, [requestedSection]);
+        if (!customChannelsEnabled && activeTab === "channels") {
+            setActiveTab("models");
+            return;
+        }
+        if (isConfigSection(requestedSection) && (requestedSection !== "channels" || customChannelsEnabled)) setActiveTab(requestedSection);
+    }, [activeTab, customChannelsEnabled, requestedSection]);
 
     useEffect(() => {
         if (!userId) return;
@@ -83,6 +92,7 @@ export default function SettingsPage() {
     }, [message, userId]);
 
     const selectSection = (section: ConfigSectionKey) => {
+        if (section === "channels" && !customChannelsEnabled) return;
         setActiveTab(section);
         const next = new URLSearchParams(searchParams);
         next.set("section", section);
@@ -90,17 +100,20 @@ export default function SettingsPage() {
     };
 
     const finishConfig = () => {
-        const invalidChannel = userChannels.find((channel) => channelValidationError(channel));
+        const invalidChannel = customChannelsEnabled ? userChannels.find((channel) => channelValidationError(channel)) : undefined;
         if (invalidChannel) {
             selectSection("channels");
             message.warning(`${invalidChannel.name || "未命名渠道"}：${channelValidationError(invalidChannel)}`);
             focusInvalidChannelField(invalidChannel);
             return;
         }
-        const ready = config.channels.some(isChannelReady);
+        const ready = effectiveConfig.channels.some(isChannelReady);
         if (!ready) {
-            selectSection("channels");
-            message.error(shouldPromptContinue ? "请先完成至少一个渠道的 Base URL、API Key 和模型配置" : "当前没有可用渠道，请先完成连接信息和模型配置");
+            if (customChannelsEnabled) selectSection("channels");
+            else selectSection("models");
+            message.error(customChannelsEnabled
+                ? (shouldPromptContinue ? "请先完成至少一个渠道的 Base URL、API Key 和模型配置" : "当前没有可用渠道，请先完成连接信息和模型配置")
+                : "管理员尚未开放可用的系统模型");
             return;
         }
         message.success("配置已保存，正在返回创作页面");
@@ -266,7 +279,7 @@ export default function SettingsPage() {
             <div className="flex min-h-0 flex-1 flex-col md:flex-row">
                 <aside className="w-full shrink-0 border-b border-border/70 bg-transparent p-2 md:w-[224px] md:border-b-0 md:border-r md:p-3">
                     <nav className="thin-scrollbar flex gap-1 overflow-x-auto md:block md:space-y-1" aria-label="配置分类">
-                        {configSections.map((item) => {
+                        {visibleConfigSections.map((item) => {
                             const selected = item.key === activeTab;
                             return (
                                 <button
@@ -458,7 +471,7 @@ export default function SettingsPage() {
                         label: "模型",
                         children: (
                             <SettingsPane>
-                                <ModelDefaultGrid config={config} onChange={(key, model) => updateConfig(key, model)} />
+                                <ModelDefaultGrid config={effectiveConfig} onChange={(key, model) => updateConfig(key, model)} />
                             </SettingsPane>
                         ),
                     },

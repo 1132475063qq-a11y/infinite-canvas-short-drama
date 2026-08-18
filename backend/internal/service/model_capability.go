@@ -22,6 +22,7 @@ type ImageCapabilityConfig struct {
 	Size                  ImageSizeConfig      `json:"size"`
 	Quality               ImageQualityConfig   `json:"quality"`
 	TransparentBackground VideoBooleanConfig   `json:"transparentBackground"`
+	CountParameter        *ParameterSupport    `json:"countParameter,omitempty"`
 	ResponseFormat        ParameterSupport     `json:"responseFormat"`
 	OutputFormat          ParameterSupport     `json:"outputFormat"`
 	MaxOutputs            int                  `json:"maxOutputs"`
@@ -100,6 +101,7 @@ func DefaultImageCapabilityConfig(protocol string, modelName string) *ImageCapab
 		Size:                  ImageSizeConfig{Parameter: "size", Values: []string{"1:1", "3:2", "2:3", "4:3", "3:4", "16:9", "21:9", "9:16", "2048x2048", "2048x1152", "1152x2048", "3840x2160", "2160x3840"}, Default: "1:1", AllowCustom: true},
 		Quality:               ImageQualityConfig{Supported: true, Values: []string{"auto", "low", "medium", "high"}, Default: "auto"},
 		TransparentBackground: VideoBooleanConfig{Supported: true, Default: false},
+		CountParameter:        &ParameterSupport{Supported: true},
 		ResponseFormat:        ParameterSupport{Supported: true},
 		OutputFormat:          ParameterSupport{Supported: true},
 		MaxOutputs:            15,

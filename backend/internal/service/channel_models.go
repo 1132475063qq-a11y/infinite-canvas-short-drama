@@ -97,9 +97,16 @@ func (s *Service) FetchAdminChannelModels(ctx context.Context, actor *model.User
 		return nil, err
 	}
 	// 使用服务端保存的渠道密钥和请求头访问上游，避免敏感配置再次经过浏览器。
-	models, err := s.FetchChannelModels(ctx, actor, ChannelModelsRequest{BaseURL: channel.BaseURL, APIKey: channel.APIKey, APIFormat: channel.APIFormat, Headers: headers})
+	// 目录项可以携带已验证的视频能力合同，但绝不携带或继承上游计费价格。
+	catalog, err := s.FetchChannelModelCatalog(ctx, actor, ChannelModelsRequest{BaseURL: channel.BaseURL, APIKey: channel.APIKey, APIFormat: channel.APIFormat, Headers: headers})
 	if err != nil {
 		return nil, err
+	}
+	models := make([]string, 0, len(catalog))
+	for _, item := range catalog {
+		if name := strings.TrimSpace(item.ID); name != "" {
+			models = append(models, name)
+		}
 	}
 	// 只按当前未删除记录去重；重新拉取已删除模型时应生成新的待配置记录。
 	existing, err := s.repo.ChannelModels(channelID, true)
@@ -110,19 +117,63 @@ func (s *Service) FetchAdminChannelModels(ctx context.Context, actor *model.User
 	for _, item := range existing {
 		known[item.ModelKey] = struct{}{}
 	}
-	missing := make([]model.ChannelModel, 0, len(models))
-	for _, name := range models {
+	missing := make([]model.ChannelModel, 0, len(catalog))
+	for _, item := range catalog {
+		name := strings.TrimSpace(item.ID)
+		if name == "" {
+			continue
+		}
 		if _, ok := known[name]; ok {
 			continue
 		}
 		// 自动发现不能绕过定价边界；新模型由管理员定价后再手动启用。
-		missing = append(missing, model.ChannelModel{ID: newID(), ChannelID: channelID, ModelKey: name, DisplayName: name, BillingMode: "fixed_request", Enabled: false, PriceVersion: 1})
+		candidate, catalogErr := channelModelFromCatalogItem(channelID, item)
+		if catalogErr != nil {
+			return nil, catalogErr
+		}
+		missing = append(missing, candidate)
 	}
 	added, err := s.repo.CreateMissingChannelModels(missing)
 	if err != nil {
 		return nil, err
 	}
 	return &AdminChannelModelFetchResult{Models: models, Added: added}, nil
+}
+
+func channelModelFromCatalogItem(channelID string, item ChannelModelCatalogItem) (model.ChannelModel, error) {
+	modelKey := strings.TrimPrefix(strings.TrimSpace(item.ID), "models/")
+	candidate := model.ChannelModel{
+		ID:          newID(),
+		ChannelID:   channelID,
+		ModelKey:    modelKey,
+		DisplayName: firstNonEmpty(strings.TrimSpace(item.DisplayName), modelKey),
+		BillingMode: "fixed_request",
+		// Discovery must never enable a model or convert an upstream cost into a
+		// customer price. Both fields stay false until an administrator saves it.
+		Enabled:         false,
+		PriceConfigured: false,
+		PriceVersion:    1,
+	}
+	capability := normalizeCapability(item.Capability)
+	if capability == "" || item.Protocol == "" || capabilityForProtocol(item.Protocol) != capability {
+		return candidate, nil
+	}
+	candidate.Capability = capability
+	candidate.Protocol = item.Protocol
+	if (capability != "image" && capability != "video") || item.CapabilityConfig == nil {
+		return candidate, nil
+	}
+	config, err := NormalizeModelCapabilityConfig(capability, string(item.Protocol), item.CapabilityConfig)
+	if err != nil {
+		return model.ChannelModel{}, err
+	}
+	encoded, err := json.Marshal(config)
+	if err != nil {
+		return model.ChannelModel{}, err
+	}
+	candidate.CapabilityConfigJSON = string(encoded)
+	candidate.CapabilityVersion = 1
+	return candidate, nil
 }
 
 func (s *Service) SaveAdminChannelModel(actor *model.User, channelID string, id string, req ChannelModelRequest) (*model.ChannelModel, error) {

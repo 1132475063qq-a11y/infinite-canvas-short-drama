@@ -95,10 +95,17 @@ func sanitizeMultipartPayload(source io.Reader, boundary string) string {
 
 func sanitizeAPICallJSON(value any, key string) any {
 	normalizedKey := strings.ToLower(strings.ReplaceAll(strings.ReplaceAll(key, "_", ""), "-", ""))
-	for _, secretKey := range []string{"apikey", "accesstoken", "authorization", "password", "secret"} {
+	// Headers and credential-shaped fields are never useful enough in an audit
+	// payload to justify retaining their values. Keep this check at the JSON
+	// boundary because provider bodies frequently nest headers under arbitrary
+	// objects, where sanitizing only the HTTP header map would be too late.
+	for _, secretKey := range []string{"apikey", "accesstoken", "authorization", "password", "secret", "credential", "privatekey", "clientsecret"} {
 		if strings.Contains(normalizedKey, secretKey) {
 			return "[REDACTED]"
 		}
+	}
+	if normalizedKey == "header" || normalizedKey == "headers" || normalizedKey == "token" || normalizedKey == "key" {
+		return "[REDACTED]"
 	}
 	switch typed := value.(type) {
 	case map[string]any:
@@ -138,7 +145,7 @@ func sanitizeAPICallURL(value string) (string, bool) {
 	query := parsed.Query()
 	for key := range query {
 		normalized := strings.ToLower(strings.ReplaceAll(strings.ReplaceAll(key, "_", ""), "-", ""))
-		if strings.Contains(normalized, "token") || strings.Contains(normalized, "signature") || strings.Contains(normalized, "apikey") || normalized == "key" {
+		if strings.Contains(normalized, "token") || strings.Contains(normalized, "signature") || strings.Contains(normalized, "apikey") || strings.Contains(normalized, "credential") || strings.Contains(normalized, "secret") || strings.Contains(normalized, "password") || normalized == "key" {
 			query.Set(key, "[REDACTED]")
 		}
 	}

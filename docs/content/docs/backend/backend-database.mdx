@@ -1,0 +1,122 @@
+---
+title: Backend Database
+---
+
+# Backend database
+
+数据库是影视生产事实源；Canvas 文档只保存 `DomainRef` 与排版投影，不复制生产对象正文。
+
+## Phase 4 影视语义表
+
+### `scenes`
+
+除场次编号、标题和顺序外，场次保存 `interior_exterior`、`time_of_day` 与可选的
+`location_asset_id`。场地绑定只能指向当前项目中分类为 `environment` 的资产。
+
+### `shots`
+
+镜头基础字段保存时长、状态、所属场次与章节。`contract_artifact_id` 和
+`contract_version` 指向当前生效的 Shot Contract；旧合同版本不会被覆盖。
+
+### `film_artifacts`
+
+`film_artifacts` 保存版本化影视生产事实，当前已用于 `shot_contract`、`acting`、
+`video_prompt_pack`、`generation_request`、`scene_asset_pack` 与 `spatial_continuity_gate`。每次 Inspector 保存会新增一行；Shot Contract
+还会原子更新 Shot 的当前版本指针。关键字段包括：
+
+- `project_id`、`unit_id`、`scene_id`、`shot_id`
+- `scope`、`scope_id`：统一支持 `project`、`unit`、`scene`、`shot` 四级版本作用域
+- `artifact_type`、`object_version`、`status`
+- `payload_json`、`source_refs_json`、`authority_refs_json`
+- `responsible_agent_id`
+
+版本唯一性由 `project_id + scope + scope_id + artifact_type + object_version` 保证。迁移会先按旧行已有的 Shot、Scene、Unit 或 Project 关联回填作用域，再创建唯一索引。
+
+`scene_asset_pack` 与派生的 `spatial_continuity_gate` 使用场景作用域并在同一事务中追加；Gate Payload 记录精确 Pack Artifact ID/版本。`draft` / `review` 可以保存未通过的空间包，`ready` / `locked` 只接受 `PASS`。场景关联的正式生成在提交事务内再次核对最新 Pack 与精确 Gate，失败时不会创建 Task 或计费预留。
+
+项目、章节或批量分镜删除时，对应 Artifact 与镜头引用在同一事务中清理。
+
+### `canvas_projection_patches`
+
+`canvas_projection_patches` 保存不能放进浏览器整份画布文档的服务端运行时投影。当前
+`patch_kind = film_generation_task` 只绑定一个 Canvas 节点、一个影视项目、一个精确的
+Generation Request Artifact 版本和一个已经存在的 `Task`。写入时请求必须仍是 `ready` 或
+`locked`，画布也必须仍关联这个目标项目。
+
+关键字段包括：
+
+- `canvas_id`、`node_id`、`patch_kind`（同一用户画布节点只有一个同类 Patch）
+- `target_project_id`、`target_artifact_id`、`target_artifact_version`
+- `task_id`、`revision`
+
+读取 Canvas 时，只有画布仍关联目标项目、节点仍为 `filmKind = generation` 且 `projectId`、
+Artifact ID 和 Artifact version 全部精确匹配，服务才会把 `taskId` 临时合并到返回 JSON。
+如果执行事实已经存在，同一读取投影还会从独立表补充最新的 `generationAttemptId`、
+`providerJobId` 和 `resultId`；这些字段不是 Patch 数据库列，也不属于浏览器事实源。浏览器提交的
+上述运行时 ID 会在持久化前全部剥离。整份 Canvas 替换会保留仍存在的 Canvas ID 的 Patch，
+防止旧页面保存擦除服务端任务绑定。删除 Canvas、项目解绑或删除项目时会清理相应 Patch。
+
+公开的原子提交路径会在同一事务中创建 Task、初始 `GenerationAttempt`、计费事实和对应 Patch；
+Patch 本身仍不调用 Provider。
+
+### `tasks` / `generation_attempts`
+
+`tasks` 继续作为可领取、可重试的异步队列项；它是当前状态，不承担完整执行历史。
+`generation_attempts` 为每次 Worker 领取保存一条不可覆盖的影视执行事实：
+
+- `task_id + attempt_number` 唯一；初次提交先写入 `queued` 的 attempt 1；
+- Worker 领取时与 Task 租约在同一事务中切换为 `running`；
+- Retry 保留旧 Attempt，并为同一 Task 创建下一编号的 `queued` Attempt；
+- Worker 租约过期后重新领取会把未确认的旧 Attempt 标为 `uncertain`，再创建新 Attempt；终态和完成写入还会校验租约所有者，旧 Worker 不能关闭新 Attempt；
+- 每行冻结精确 Generation Request ID/版本/指纹、Canvas 节点、Scene/Shot、渠道模型、协议、
+  能力版本、价格版本和该次计费单引用。
+
+Attempt 不保存 API Key、Base URL、Secret、Headers 或 Provider 原始请求/响应。
+
+### `provider_jobs`
+
+`provider_jobs` 把真实上游任务号归属到某一个 `GenerationAttempt`，而不是只依赖 Task 上的可变
+`provider_request_id`。`generation_attempt_id + provider_request_id` 唯一；状态被归一为
+`accepted`、`running`、`succeeded`、`failed`、`cancellation_requested`、`cancelled` 或
+`uncertain`。Worker 发出的观察携带 Attempt 编号；迟到观察只归入原 Attempt，不能覆盖新 Attempt 当前使用的 Task 指针。轮询阶段、上游原始状态、最后错误和观察时间可以更新，但已确认成功不会被后续噪声轮询降级。
+
+Provider 原始调用证据仍由脱敏的 `api_call_logs` 承担，`provider_jobs` 不复制请求体或响应体。
+
+### `results`
+
+现有通用 `results` 表增加影视执行关联字段，不再另建重复的 Film Result 表。影视成功写入使用
+`kind = film_generation_result`，并记录 `attempt_id`、`domain_project_id`、精确 Generation Request
+ID/版本、Task ID、标准化结果 Payload 和首个可访问媒体 URL。Task 成功、Attempt 成功和 Result
+创建处于同一事务中；缺少对应 Attempt 时拒绝把影视 Task 标成成功。
+
+只读执行历史接口按用户、项目与 Generation Request 做归属校验：
+
+```text
+GET /projects/:projectId/film-generation-requests/:artifactId/executions
+```
+
+当前代码和测试合同不等于真实 Provider、媒体质量或浏览器交互验收。
+
+### `assets` / `asset_versions`
+
+Character、Location、Prop 继续使用统一资产身份与不可变版本。当前版本的
+`definition_json` 由项目详情 API 解析为 `currentVersion.definition`，Inspector 保存
+Location/Prop 时新增 AssetVersion；Character 使用角色专用版本服务保留形象与声音绑定。
+
+## Ecommerce Prototype A 电商语义表
+
+### `ecommerce_artifacts`
+
+电商创意域使用独立的 `ecommerce_artifacts` 事实源，不写入 `film_artifacts`。每个
+`project_id + artifact_key + artifact_type` 的保存操作只追加一个新 `revision`，并在同一
+事务中推进项目 revision；已 finalized 的历史版本不会被覆盖。
+
+关键字段包括：
+
+- `artifact_key`、`artifact_type`、`schema_version`、`revision`
+- `lifecycle`、`evidence`、`skill_ref`、`responsible_agent_id`
+- `payload_json`、`source_refs_json`、`authority_refs_json`
+
+写入 API 只接受 `project.type = ecommerce`，并校验 Artifact 类型、生命周期、证据等级、
+非空 source refs 和结构化 payload。当前该表只承载 Provider-free Prototype A 合同；真实
+Provider、GenerationJob、GeneratedAsset 和媒体 QA 仍未接入。

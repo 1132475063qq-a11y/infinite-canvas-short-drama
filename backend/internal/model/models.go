@@ -5,6 +5,8 @@ import (
 )
 
 type TaskStatus string
+type GenerationAttemptStatus string
+type ProviderJobStatus string
 type ProviderCancelStatus string
 type SessionStatus string
 type UserRole string
@@ -25,6 +27,21 @@ type AssetCategory string
 type AssetVersionStatus string
 type WorkflowStatus string
 type WorkflowStepStatus string
+type FilmArtifactScope string
+
+const (
+	FilmArtifactScopeProject FilmArtifactScope = "project"
+	FilmArtifactScopeUnit    FilmArtifactScope = "unit"
+	FilmArtifactScopeScene   FilmArtifactScope = "scene"
+	FilmArtifactScopeShot    FilmArtifactScope = "shot"
+)
+
+const (
+	ProjectTypeShortDrama    = "short-drama"
+	ProjectTypeEcommerce     = "ecommerce"
+	TaskProviderFilmGateway  = "provider-gateway"
+	ResultKindFilmGeneration = "film_generation_result"
+)
 
 // AdminAuditEvent 只允许追加，用于还原管理员写操作，禁止作为可编辑业务状态使用。
 type AdminAuditEvent struct {
@@ -44,6 +61,21 @@ const (
 	TaskStatusSucceeded TaskStatus = "succeeded"
 	TaskStatusFailed    TaskStatus = "failed"
 	TaskStatusCancelled TaskStatus = "cancelled"
+
+	GenerationAttemptStatusQueued    GenerationAttemptStatus = "queued"
+	GenerationAttemptStatusRunning   GenerationAttemptStatus = "running"
+	GenerationAttemptStatusSucceeded GenerationAttemptStatus = "succeeded"
+	GenerationAttemptStatusFailed    GenerationAttemptStatus = "failed"
+	GenerationAttemptStatusCancelled GenerationAttemptStatus = "cancelled"
+	GenerationAttemptStatusUncertain GenerationAttemptStatus = "uncertain"
+
+	ProviderJobStatusAccepted              ProviderJobStatus = "accepted"
+	ProviderJobStatusRunning               ProviderJobStatus = "running"
+	ProviderJobStatusSucceeded             ProviderJobStatus = "succeeded"
+	ProviderJobStatusFailed                ProviderJobStatus = "failed"
+	ProviderJobStatusCancellationRequested ProviderJobStatus = "cancellation_requested"
+	ProviderJobStatusCancelled             ProviderJobStatus = "cancelled"
+	ProviderJobStatusUncertain             ProviderJobStatus = "uncertain"
 
 	SessionStatusActive    SessionStatus = "active"
 	SessionStatusCompleted SessionStatus = "completed"

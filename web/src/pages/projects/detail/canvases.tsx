@@ -85,12 +85,15 @@ function toCanvasProject(canvas: { id: string; title: string; createdAt: string;
     if (local) return { ...local, title: canvas.title || local.title, updatedAt: canvas.updatedAt || local.updatedAt };
     return {
         id: canvas.id,
+        schemaVersion: 2,
+        layout: { gridSize: 8 },
         projectId,
         title: canvas.title,
         createdAt: canvas.createdAt,
         updatedAt: canvas.updatedAt,
         nodes: [],
         connections: [],
+        groups: [],
         chatSessions: [],
         activeChatId: null,
         backgroundMode: "dots",

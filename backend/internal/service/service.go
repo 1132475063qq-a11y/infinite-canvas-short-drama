@@ -74,6 +74,8 @@ type TaskSummary struct {
 	ID                        string                     `json:"id"`
 	SessionID                 string                     `json:"sessionId,omitempty"`
 	ProjectID                 string                     `json:"projectId,omitempty"`
+	DomainProjectID           string                     `json:"domainProjectId,omitempty"`
+	CanvasID                  string                     `json:"canvasId,omitempty"`
 	Type                      string                     `json:"type"`
 	Status                    model.TaskStatus           `json:"status"`
 	Stage                     string                     `json:"stage"`
@@ -322,6 +324,11 @@ func (s *Service) CreateTask(userID string, req CreateTaskRequest) (*model.Task,
 	if err != nil {
 		return nil, err
 	}
+	if taskInputUsesCustomProvider(normalizedInput) {
+		if err := s.RequireFeature(FeatureCustomChannels); err != nil {
+			return nil, err
+		}
+	}
 	if err := s.ValidateTaskCapability(normalizedInput); err != nil {
 		return nil, err
 	}
@@ -391,6 +398,39 @@ func normalizeTaskInput(input map[string]any) (map[string]any, error) {
 		normalized["canvasSnapshot"] = compactPersistedValue(snapshot)
 	}
 	return normalized, nil
+}
+
+// 平台模式只允许管理员系统渠道。该判断覆盖旧任务里可能残留的自定义鉴权材料，
+// 但保留系统 channelId 和系统代理 URL 两种受管路由表示。
+func taskInputUsesCustomProvider(input map[string]any) bool {
+	config, _ := input["config"].(map[string]any)
+	if config == nil {
+		return false
+	}
+	if taskConfigString(config, "channelId") != "" {
+		return false
+	}
+	baseURL := taskConfigString(config, "baseUrl")
+	if systemChannelIDFromBaseURL(baseURL) != "" {
+		return false
+	}
+	if baseURL != "" || taskConfigString(config, "apiKey") != "" || taskConfigString(config, "secretKey") != "" {
+		return true
+	}
+	headers, exists := config["headers"]
+	if !exists || headers == nil {
+		return false
+	}
+	items, ok := headers.([]any)
+	return !ok || len(items) > 0
+}
+
+func taskConfigString(config map[string]any, key string) string {
+	value, exists := config[key]
+	if !exists || value == nil {
+		return ""
+	}
+	return strings.TrimSpace(fmt.Sprint(value))
 }
 
 func compactPersistedValue(value interface{}) interface{} {
@@ -502,18 +542,53 @@ func (s *Service) RetryTask(userID string, id string) (*model.Task, error) {
 	if err := json.Unmarshal([]byte(decryptedInput), &billingInput); err != nil {
 		return nil, err
 	}
+	if taskInputUsesCustomProvider(billingInput) {
+		if err := s.RequireFeature(FeatureCustomChannels); err != nil {
+			return nil, err
+		}
+	}
+	if task.Provider == model.TaskProviderFilmGateway {
+		var runtimeInput canvasGenerationInput
+		if err := json.Unmarshal([]byte(decryptedInput), &runtimeInput); err != nil {
+			return nil, err
+		}
+		if err := s.validateTaskProviderRouteSnapshot(runtimeInput.Config, runtimeInput.Metadata); err != nil {
+			return nil, BadAuthRequest("原 Provider 路由能力已变化，请创建新的 Generation Request 后再提交")
+		}
+	}
 	billingOrder, err := s.taskBillingOrder(userID, task, billingInput)
 	if err != nil {
 		return nil, err
+	}
+	retryTask := *task
+	if billingOrder != nil {
+		retryTask.BillingOrderID = billingOrder.ID
+	} else {
+		retryTask.BillingOrderID = ""
+	}
+	var generationAttempt *model.GenerationAttempt
+	if retryTask.Provider == model.TaskProviderFilmGateway {
+		generationAttempt, err = filmGenerationAttemptFromRuntimeInput(retryTask, billingInput, time.Now())
+		if err != nil {
+			return nil, err
+		}
+		currentRoute, routeErr := s.repo.ChannelModelByID(generationAttempt.ChannelID, generationAttempt.ChannelModelID)
+		if routeErr != nil {
+			return nil, BadAuthRequest("原 Provider 路由已不可用，请创建新的 Generation Request 后再提交")
+		}
+		generationAttempt.PriceVersion = currentRoute.PriceVersion
+		if billingOrder != nil && (billingOrder.ChannelID != generationAttempt.ChannelID || billingOrder.ChannelModelID != generationAttempt.ChannelModelID || billingOrder.Model != generationAttempt.Model || billingOrder.Capability != generationAttempt.Capability || billingOrder.PriceVersion != generationAttempt.PriceVersion) {
+			return nil, errors.New("影视生成重试的 Attempt 与计费路由不一致")
+		}
 	}
 	policy, err := s.RuntimePolicy()
 	if err != nil {
 		return nil, err
 	}
-	if err := s.ensureTaskProjectActive(userID, task.ProjectID); err != nil {
+	if err := s.ensureTaskProjectActive(userID, taskActiveScopeID(*task)); err != nil {
 		return nil, err
 	}
-	task, err = s.repo.RetryTaskWithBilling(userID, task.ID, billingOrder, policy.Task.ActiveTaskLimit)
+	task, err = s.retryTaskWithinStorageQuota(userID, task.ID, billingOrder, generationAttempt, policy)
 	if errors.Is(err, repository.ErrInsufficientCredits) {
 		return nil, BadAuthRequest("积分不足，请先使用兑换码充值")
 	}
@@ -664,6 +739,8 @@ func taskSummaryForOutput(task model.Task) TaskSummary {
 		ID:                        task.ID,
 		SessionID:                 task.SessionID,
 		ProjectID:                 task.ProjectID,
+		DomainProjectID:           task.DomainProjectID,
+		CanvasID:                  task.CanvasID,
 		Type:                      task.Type,
 		Status:                    task.Status,
 		Stage:                     task.Stage,
@@ -907,13 +984,13 @@ func (s *Service) processClaimedTask(task *model.Task) error {
 
 	task.Stage = "调用生成模型"
 	task.Progress = 35
-	_ = s.repo.UpdateTaskProgress(task.ID, task.Stage, task.Progress)
+	_ = s.repo.UpdateTaskProgressForLease(task.ID, task.Stage, task.Progress, task.LeaseOwner)
 	if err := s.MarkBillingRunning(task.BillingOrderID); err != nil {
 		task.Status = model.TaskStatusFailed
 		task.Stage = "计费准备失败"
 		task.Error = taskFailureMessage(err)
 		task.CompletedAt = ptr(time.Now())
-		_, _ = s.repo.UpdateTaskTerminalState(task.ID, model.TaskStatusRunning, task.Status, task.Stage, task.Error, *task.CompletedAt)
+		_, _ = s.repo.UpdateTaskTerminalStateForLease(task.ID, model.TaskStatusRunning, task.Status, task.Stage, task.Error, *task.CompletedAt, task.LeaseOwner)
 		_ = s.RefundBilling(task.BillingOrderID, "计费准备失败，上游请求未发出")
 		return err
 	}
@@ -944,7 +1021,7 @@ func (s *Service) processClaimedTask(task *model.Task) error {
 			task.Stage = "任务已取消"
 			task.Error = "任务已取消"
 			task.CompletedAt = ptr(time.Now())
-			_, _ = s.repo.UpdateTaskTerminalState(task.ID, model.TaskStatusRunning, task.Status, task.Stage, task.Error, *task.CompletedAt)
+			_, _ = s.repo.UpdateTaskTerminalStateForLease(task.ID, model.TaskStatusRunning, task.Status, task.Stage, task.Error, *task.CompletedAt, task.LeaseOwner)
 			if channelSlotFailedBeforeRequest {
 				_ = s.RefundBilling(task.BillingOrderID, "等待渠道槽位期间取消，上游请求未发出")
 			} else {
@@ -964,7 +1041,7 @@ func (s *Service) processClaimedTask(task *model.Task) error {
 		task.Stage = "任务失败"
 		task.Error = taskFailureMessage(err)
 		task.CompletedAt = ptr(time.Now())
-		_, _ = s.repo.UpdateTaskTerminalState(task.ID, model.TaskStatusRunning, task.Status, task.Stage, task.Error, *task.CompletedAt)
+		_, _ = s.repo.UpdateTaskTerminalStateForLease(task.ID, model.TaskStatusRunning, task.Status, task.Stage, task.Error, *task.CompletedAt, task.LeaseOwner)
 		if compactErr := s.finalizeTaskTextReplay(task.ID, model.TaskStatusFailed); compactErr != nil {
 			_ = s.log(task.UserID, task.ID, "error", "文本回放草稿归并失败", compactErr.Error())
 		}
@@ -994,7 +1071,7 @@ func (s *Service) processClaimedTask(task *model.Task) error {
 	opsJSON, _ := json.Marshal(canvasOps)
 	task.Stage = "持久化生成结果"
 	task.Progress = 90
-	_ = s.repo.UpdateTaskProgress(task.ID, task.Stage, task.Progress)
+	_ = s.repo.UpdateTaskProgressForLease(task.ID, task.Stage, task.Progress, task.LeaseOwner)
 	if err := s.saveTaskCompletionWithinStorageQuota(task, resultJSON, opsJSON, len(canvasOps) > 0); err != nil {
 		if errors.Is(err, repository.ErrTaskStateConflict) {
 			latest, latestErr := s.repo.Task(task.ID)
@@ -1009,7 +1086,7 @@ func (s *Service) processClaimedTask(task *model.Task) error {
 		task.Stage = "任务结果保存失败"
 		task.Error = taskFailureMessage(err)
 		task.CompletedAt = ptr(time.Now())
-		_, _ = s.repo.UpdateTaskTerminalState(task.ID, model.TaskStatusRunning, task.Status, task.Stage, task.Error, *task.CompletedAt)
+		_, _ = s.repo.UpdateTaskTerminalStateForLease(task.ID, model.TaskStatusRunning, task.Status, task.Stage, task.Error, *task.CompletedAt, task.LeaseOwner)
 		if compactErr := s.finalizeTaskTextReplay(task.ID, model.TaskStatusFailed); compactErr != nil {
 			_ = s.log(task.UserID, task.ID, "error", "文本回放草稿归并失败", compactErr.Error())
 		}
@@ -1080,7 +1157,11 @@ func (s *Service) processTask(ctx context.Context, task model.Task) (map[string]
 		return s.processStoryboardRowsTask(ctx, task)
 	}
 	if strings.HasPrefix(task.Type, "canvas_") || canRunProviderTask(task) {
-		result, err := s.processCanvasGenerationTask(ctx, task.UserID, task.ProjectID, task.Type, task.Prompt, task.InputJSON)
+		canvasID := task.CanvasID
+		if canvasID == "" {
+			canvasID = task.ProjectID
+		}
+		result, err := s.processCanvasGenerationTask(ctx, task.UserID, canvasID, task.Type, task.Prompt, task.InputJSON)
 		return result, nil, err
 	}
 	if task.Type == "agent_storyboard" {
@@ -1107,7 +1188,7 @@ func canRunProviderTask(task model.Task) bool {
 	if mode != "video" || !ok || strings.TrimSpace(fmt.Sprint(config["model"])) == "" {
 		return false
 	}
-	return strings.TrimSpace(fmt.Sprint(config["channelId"])) != "" || (strings.TrimSpace(fmt.Sprint(config["baseUrl"])) != "" && strings.TrimSpace(fmt.Sprint(config["apiKey"])) != "")
+	return taskConfigString(config, "channelId") != "" || (taskConfigString(config, "baseUrl") != "" && taskConfigString(config, "apiKey") != "")
 }
 
 func (s *Service) processAgentStoryboardTask(ctx context.Context, task model.Task) (map[string]interface{}, []map[string]interface{}, error) {
@@ -1231,7 +1312,7 @@ func (s *Service) repairStoryboardPlan(ctx context.Context, task model.Task, inp
 	currentText := originalText
 	currentErr := validationErr
 	for attempt := 1; attempt <= maxStoryboardRepairAttempts; attempt++ {
-		_ = s.repo.UpdateTaskProgress(task.ID, "修复分镜结构", 55+attempt*10)
+		_ = s.repo.UpdateTaskProgressForLease(task.ID, "修复分镜结构", 55+attempt*10, task.LeaseOwner)
 		repairPrompt, promptErr := s.buildStoryboardRepairPrompt(task.UserID, task.Prompt, currentErr, input, currentText)
 		if promptErr != nil {
 			return agentStoryboardPlan{}, promptErr

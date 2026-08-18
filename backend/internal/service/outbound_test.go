@@ -28,6 +28,8 @@ func TestNormalizeOutboundHeadersAllowsCustomUserAgent(t *testing.T) {
 func TestNormalizeOutboundHeadersRejectsUnsafeAndDuplicateValues(t *testing.T) {
 	tests := [][]OutboundHeader{
 		{{Name: "Authorization", Value: "Bearer attacker"}},
+		{{Name: "X-Provider-Token", Value: "provider-secret"}},
+		{{Name: "X-API-Key", Value: "provider-secret"}},
 		{{Name: "X-Test", Value: "safe\r\ninjected: true"}},
 		{{Name: "X-Test", Value: "one"}, {Name: "x-test", Value: "two"}},
 	}

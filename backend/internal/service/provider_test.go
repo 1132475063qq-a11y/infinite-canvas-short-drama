@@ -12,6 +12,8 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+
+	"infinite-canvas/backend/internal/model"
 )
 
 const testReferenceImageDataURL = "data:image/png;base64,aGVsbG8="
@@ -1132,6 +1134,13 @@ func TestProcessTaskValidatesInterfaceBeforeHydratingMedia(t *testing.T) {
 	t.Setenv("CANVAS_ALLOW_PRIVATE_UPSTREAMS", "true")
 	server := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
 	defer server.Close()
+	svc, _ := newFeatureAvailabilityTestService(t)
+	actor := &model.User{ID: "admin-1", Role: model.UserRoleAdmin}
+	if _, err := svc.UpdateFeatureAvailability(actor, FeatureAvailability{
+		ShortDramaEnabled: true, TaskCenterEnabled: true, CreditsEnabled: true, CustomChannelsEnabled: true,
+	}); err != nil {
+		t.Fatal(err)
+	}
 	input := canvasGenerationInput{
 		Mode:            "video",
 		Prompt:          "make it move",
@@ -1139,9 +1148,44 @@ func TestProcessTaskValidatesInterfaceBeforeHydratingMedia(t *testing.T) {
 		ReferenceImages: []providerMedia{{StorageKey: "resource:missing"}},
 	}
 	raw, _ := json.Marshal(input)
-	_, err := (&Service{}).processCanvasGenerationTask(context.Background(), "user-1", "", "video_generate", "", string(raw))
+	_, err := svc.processCanvasGenerationTask(context.Background(), "user-1", "", "video_generate", "", string(raw))
 	if err == nil || !strings.Contains(err.Error(), "不支持video生成") {
 		t.Fatalf("processCanvasGenerationTask() error = %v", err)
+	}
+}
+
+func TestRunImageTaskCanSendMinimalOpenAIRequest(t *testing.T) {
+	t.Setenv("CANVAS_ALLOW_PRIVATE_UPSTREAMS", "true")
+	var requestBody map[string]any
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/images/generations" {
+			t.Fatalf("request path = %q", r.URL.Path)
+		}
+		if err := json.NewDecoder(r.Body).Decode(&requestBody); err != nil {
+			t.Fatal(err)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"data":[{"b64_json":"aGVsbG8="}]}`))
+	}))
+	defer server.Close()
+
+	profile := DefaultImageCapabilityConfig(string(model.ChannelInterfaceOpenAIImage), "gpt-image-2")
+	profile.CountParameter = &ParameterSupport{Supported: false}
+	profile.ResponseFormat.Supported = false
+	profile.OutputFormat.Supported = false
+	profile.Quality.Supported = false
+	profile.TransparentBackground.Supported = false
+	_, err := runImageTask(context.Background(), canvasGenerationInput{
+		Mode: "image", Prompt: "minimal request",
+		Config:          providerConfig{BaseURL: server.URL + "/v1", APIKey: "key", Model: "gpt-image-2", Size: "1:1"},
+		ImageCapability: profile,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]any{"model": "gpt-image-2", "prompt": "minimal request", "size": "1024x1024"}
+	if !reflect.DeepEqual(requestBody, want) {
+		t.Fatalf("request body = %#v, want %#v", requestBody, want)
 	}
 }
 

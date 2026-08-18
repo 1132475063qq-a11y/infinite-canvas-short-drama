@@ -14,15 +14,17 @@ import (
 const featureAvailabilitySettingKey = "feature_availability"
 
 const (
-	FeatureShortDrama = "shortDrama"
-	FeatureTaskCenter = "taskCenter"
-	FeatureCredits    = "credits"
+	FeatureShortDrama     = "shortDrama"
+	FeatureTaskCenter     = "taskCenter"
+	FeatureCredits        = "credits"
+	FeatureCustomChannels = "customChannels"
 )
 
 type FeatureAvailability struct {
-	ShortDramaEnabled bool `json:"shortDramaEnabled"`
-	TaskCenterEnabled bool `json:"taskCenterEnabled"`
-	CreditsEnabled    bool `json:"creditsEnabled"`
+	ShortDramaEnabled     bool `json:"shortDramaEnabled"`
+	TaskCenterEnabled     bool `json:"taskCenterEnabled"`
+	CreditsEnabled        bool `json:"creditsEnabled"`
+	CustomChannelsEnabled bool `json:"customChannelsEnabled"`
 }
 
 type PublicFeatureAvailability struct {
@@ -33,8 +35,9 @@ type PublicFeatureAvailability struct {
 }
 
 func defaultFeatureAvailability() FeatureAvailability {
-	// 缺少配置代表尚未由运维接管，默认保持现有功能全部开放。
-	return FeatureAvailability{ShortDramaEnabled: true, TaskCenterEnabled: true, CreditsEnabled: true}
+	// 平台模式默认只开放管理员托管的系统渠道，避免普通用户通过 BYOK
+	// 绕过统一售价、积分结算和渠道治理。
+	return FeatureAvailability{ShortDramaEnabled: true, TaskCenterEnabled: true, CreditsEnabled: true, CustomChannelsEnabled: false}
 }
 
 func (s *Service) FeatureAvailability() (*PublicFeatureAvailability, error) {
@@ -89,6 +92,8 @@ func (s *Service) FeatureEnabled(feature string) (bool, error) {
 		return value.TaskCenterEnabled, nil
 	case FeatureCredits:
 		return value.CreditsEnabled, nil
+	case FeatureCustomChannels:
+		return value.CustomChannelsEnabled, nil
 	default:
 		return false, errors.New("未知功能开放配置")
 	}
@@ -109,6 +114,8 @@ func (s *Service) RequireFeature(feature string) error {
 		return Forbidden("任务中心暂未开放")
 	case FeatureCredits:
 		return Forbidden("积分功能暂未开放")
+	case FeatureCustomChannels:
+		return Forbidden("平台当前仅开放管理员托管的系统渠道")
 	default:
 		return Forbidden("该功能暂未开放")
 	}

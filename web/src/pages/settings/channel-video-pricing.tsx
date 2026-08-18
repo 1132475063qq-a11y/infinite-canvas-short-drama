@@ -12,7 +12,7 @@ import { modelMatchesCapability, modelOptionName, type ModelChannel } from "@/st
 type ModelCost = NonNullable<ModelChannel["modelCosts"]>[number];
 
 export function ChannelModelSettings({ channel, onChange }: { channel: ModelChannel; onChange: (costs: ModelCost[]) => void }) {
-    const { message } = App.useApp();
+    const { message, modal } = App.useApp();
     const [testingModel, setTestingModel] = useState("");
     const [activeModel, setActiveModel] = useState<string | null>(null);
     if (!channel.models.length) return null;
@@ -40,6 +40,23 @@ export function ChannelModelSettings({ channel, onChange }: { channel: ModelChan
         } finally {
             setTestingModel("");
         }
+    };
+
+    const requestModelTest = (model: string, capability: ModelCost["capability"], protocol: ModelProtocol) => {
+        if (!channel.baseUrl.trim() || !channel.apiKey.trim()) {
+            message.error("请先填写 Base URL 和 API Key");
+            return;
+        }
+        const videoTest = capability === "video";
+        modal.confirm({
+            title: videoTest ? "确认测试视频模型" : "确认测试模型",
+            okText: "确认发起测试",
+            cancelText: "取消",
+            content: videoTest
+                ? "将使用当前渠道创建默认测试视频任务（6 秒、720P），可能立即产生供应商费用。该测试不会创建平台用户任务或积分订单。"
+                : "将使用当前渠道发起真实测试请求，可能产生供应商费用。该测试不会创建平台用户任务或积分订单。",
+            onOk: () => testModel(model, capability, protocol),
+        });
     };
 
     const activeModelCost = activeModel ? channel.modelCosts?.find((item) => item.model === activeModel) : undefined;
@@ -101,7 +118,7 @@ export function ChannelModelSettings({ channel, onChange }: { channel: ModelChan
                             icon={<FlaskConical className="size-3.5" />}
                             loading={testingModel === activeModel}
                             disabled={Boolean(testingModel && testingModel !== activeModel)}
-                            onClick={() => void testModel(activeModel, activeCapability, activeProtocol)}
+                            onClick={() => requestModelTest(activeModel, activeCapability, activeProtocol)}
                         >
                             测试模型
                         </Button>

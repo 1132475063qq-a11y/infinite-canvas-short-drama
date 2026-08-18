@@ -1,6 +1,8 @@
 import type { PortraitTextureSettings } from "@/lib/canvas/canvas-portrait-texture";
+import type { CanvasGridSize } from "@/lib/canvas/layout/layout-types";
 import type { StyleExecutionPlan } from "@/lib/canvas/style-profile";
 import type { SrtEntry, SubtitleHighlight, SubtitleStyle } from "@/types/timeline";
+import type { FilmConnectionPorts, FilmEdgeType, FilmNodeDomainRef, FilmNodeKind, FilmNodeLayout, FilmNodeState } from "@/film/domain/types";
 
 export type Position = {
     x: number;
@@ -37,7 +39,7 @@ export type CanvasGenerationBatchMode = "storyboard_image" | "storyboard_video" 
 export type CanvasGenerationBatchStatus = "queued" | "running" | "partial_failed" | "completed" | "cancelled";
 export type CanvasGenerationBatchItemStatus = "waiting" | "submitting" | "queued" | "running" | "succeeded" | "failed" | "cancelled";
 export type CanvasImageGenerationType = "generation" | "edit";
-export type CanvasWorkflowKind = "free" | "script" | "story_input" | "character" | "scene" | "storyboard" | "shot" | "final" | "styleboard" | "reference_set" | "reference_video" | "action_board";
+export type CanvasWorkflowKind = "free" | "script" | "story_input" | "character" | "location" | "prop" | "scene" | "storyboard" | "shot" | "acting" | "prompt_pack" | "generation" | "final" | "styleboard" | "reference_set" | "reference_video" | "action_board";
 export type CanvasVideoEditOperation = "text_to_video" | "image_to_video" | "extend" | "inpaint" | "replace_element" | "camera_motion" | "style_transfer" | "audio_to_video" | "compare_versions" | "concat";
 export type CanvasSkillCategory = "writing" | "storyboard" | "image" | "video" | "utility";
 export type CanvasSkillOutputMode = "text" | "json" | "image_prompt" | "workflow";
@@ -213,6 +215,9 @@ export type CanvasNodeMetadata = {
     taskStage?: string;
     taskCreatedAt?: string;
     taskUpdatedAt?: string;
+    // Derived media remembers its canvas source so the browser can rebuild only
+    // the system-managed result edge without guessing from a stale task binding.
+    generationSourceNodeId?: string;
     sessionId?: string;
     videoEditOperation?: CanvasVideoEditOperation;
     videoCameraMoveId?: string;
@@ -288,6 +293,11 @@ export type CanvasNodeMetadata = {
 export type CanvasNodeData = {
     id: string;
     type: CanvasNodeType;
+    // Renderer type and film meaning remain independent so media nodes can be real production projections.
+    filmKind?: FilmNodeKind;
+    domainRef?: FilmNodeDomainRef;
+    filmState?: FilmNodeState;
+    layout?: FilmNodeLayout;
     title: string;
     position: Position;
     width: number;
@@ -300,11 +310,36 @@ export type CanvasConnection = {
     id: string;
     fromNodeId: string;
     toNodeId: string;
+    edgeType?: FilmEdgeType;
+    filmPorts?: FilmConnectionPorts;
     fromHandleId?: string;
     toHandleId?: string;
     fromAnchorRatio?: number;
     toAnchorRatio?: number;
 };
+
+export const CANVAS_DOCUMENT_SCHEMA_VERSION = 2;
+
+export type CanvasDocumentGroup = {
+    id: string;
+    kind: "frame" | "scene" | "custom";
+    nodeIds: string[];
+    title?: string;
+    collapsed?: boolean;
+};
+
+export type CanvasDocumentV2 = {
+    schemaVersion: number;
+    projectId?: string;
+    layout: { gridSize: CanvasGridSize };
+    nodes: CanvasNodeData[];
+    connections: CanvasConnection[];
+    viewport: ViewportTransform;
+    groups: CanvasDocumentGroup[];
+};
+
+// Keep the host-facing name while the document contract is upgraded in place.
+export type CanvasProjectDocument = CanvasDocumentV2;
 
 export type CanvasDisplayConnection = {
     connection: CanvasConnection;

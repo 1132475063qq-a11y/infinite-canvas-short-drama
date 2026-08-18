@@ -223,7 +223,10 @@ func (s *Service) finalizeCharacterTurnaroundTask(task model.Task, result map[st
 	if input.Metadata.Operation != "character_turnaround" {
 		return false, nil
 	}
-	projectID := strings.TrimSpace(task.ProjectID)
+	projectID := strings.TrimSpace(task.DomainProjectID)
+	if projectID == "" {
+		projectID = strings.TrimSpace(task.ProjectID)
+	}
 	assetID := strings.TrimSpace(input.Metadata.CharacterAssetID)
 	if projectID == "" || assetID == "" {
 		return false, errors.New("三视图任务缺少项目或角色标识")

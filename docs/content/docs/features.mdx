@@ -1,0 +1,42 @@
+---
+title: 功能说明
+---
+
+# 当前功能说明
+
+本页描述当前仓库已具备的产品能力与明确边界。已写代码、已有测试合同、历史测试通过、当前工作树通过和真实 Provider 验收是不同层级，具体状态以 [验收记录](pending-test.mdx) 为准。
+
+## 共享工作台
+
+- 登录后的创作、项目、素材、任务、积分、技能与画布入口。
+- 可保存的无限画布：节点、连线、缩放、平移、自动布局、历史与资源引用共用同一套底层能力。
+- 管理员可治理系统渠道、模型能力、启用状态、积分价格、运行策略、存储和功能开关。
+- 普通用户默认只能使用管理员启用且已定价的系统模型；不能用自定义渠道或自带 Key 绕过渠道治理和积分结算。
+
+## Film / 短剧
+
+- `short-drama` 项目支持章节、角色、地点、道具、场景、镜头、表演、Prompt Pack 与不可变 Generation Request Artifact。
+- Film Generation Request 可在后端解析候选渠道、生成只读 Task Draft，并在显式费用确认后创建 Task、GenerationAttempt、ProviderJob、Result 和 Canvas Projection Patch 的事实链。
+- 图片路径有历史真实验收记录；当前分支仍应按 [验收记录](pending-test.mdx) 复核本轮空间系统、结果投影和渠道目录同步。
+- 场景空间连续性 Pack 支持 Scene Manifest、拓扑图、平面区、锚点、机位、剧情驱动的视角覆盖、Look Card 与 Gate。Gate 只接受 `PASS`、`UNCERTAIN`、`FAIL`、`NEEDS_YOU`，且 Generation Request 必须在关联 Gate 为 `PASS` 时才可提交。
+
+当前不应宣称已完成：视频 Provider 真实验收、自动视觉诊断、端用户 QC / Retry 界面、跨场景 Location / Opening 连续性，或数据库 Golden Project。
+
+## Ecommerce / 电商创意
+
+当前是独立于 Film 的 `ecommerce` Project Domain，复用项目、资产与底层基础设施，但不复用 Film Artifact 或 Film Skill 语义。
+
+已实现 Provider-free Prototype A：
+
+- 商品资产引用、`ProductDNA`、`CreativeDirection`、`ScenePlan`、`CreativeShotPlan`、`ExpectedRelationGraph`、`QAReport` 与 `EcommerceArtifact` 的追加版本合同。
+- `still-life.lifestyle-tabletop` Skill 文件、Template-Based Executor、四个结构化变体、Result Grid 和结构化 Basic QA。
+- 项目详情中的开发面板及后端 `/projects/:id/ecommerce-artifacts` 追加/恢复能力。
+- Provider Evaluation 的纯 TypeScript 记录合同，可记录候选渠道、统一输入、成本、延迟、失败证据、评分、盲测和 `GO` / `MODIFY` / `STOP` 决策。
+
+尚未实现：真实 Provider Bake-off、真实图片生成与媒体回写、三位 Ecommerce Agent 的运行时、自动视觉 QA、Provider Evaluation 持久化/管理 UI、`fashion.natural-walk` Prototype B，和完整 Ecommerce Canvas。
+
+## 安全与数据
+
+- 后端业务 API 使用登录态 Cookie；第三方渠道请求必须经过系统渠道或受控后端中转，不能把密钥发送到浏览器或 URL。
+- 资源支持后端文件存储或私有 OSS；删除业务对象不会自动删除 OSS 原始对象。
+- 生产部署必须使用 HTTPS、明确 CORS Origin、可信数据库/OSS 和受控管理员初始化；本地缓存只作为后端不可用时的降级，不代表服务端写入成功。

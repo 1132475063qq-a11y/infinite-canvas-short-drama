@@ -48,6 +48,11 @@ func imageParameterSupported(profile *ImageCapabilityConfig, parameter string) b
 	return profile.OutputFormat.Supported
 }
 
+func imageCountParameterSupported(profile *ImageCapabilityConfig) bool {
+	// 旧能力配置没有该字段，继续沿用历史行为；管理员可对兼容性较弱的聚合渠道显式关闭 n。
+	return profile == nil || profile.CountParameter == nil || profile.CountParameter.Supported
+}
+
 func imageQualitySupported(profile *ImageCapabilityConfig) bool {
 	return profile == nil || profile.Quality.Supported
 }

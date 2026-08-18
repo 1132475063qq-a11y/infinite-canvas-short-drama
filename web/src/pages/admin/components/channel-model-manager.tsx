@@ -30,7 +30,7 @@ type FormValues = {
 };
 
 export function ChannelModelManager({ channel, onClose, onChanged }: { channel: ModelChannel; onClose: () => void; onChanged: () => void | Promise<void> }) {
-    const { message } = App.useApp();
+    const { message, modal } = App.useApp();
     const [items, setItems] = useState<ChannelModel[]>([]);
     const [editing, setEditing] = useState<ChannelModel | null>(null);
     const [loading, setLoading] = useState(false);
@@ -131,8 +131,7 @@ export function ChannelModelManager({ channel, onClose, onChanged }: { channel: 
         }
     };
 
-    const testModel = async () => {
-        const values = await form.validateFields(["modelKey", "capability", "protocol", ...(modelCapability === "image" || modelCapability === "video" ? ["capabilityConfig"] : [])]);
+    const testModel = async (values: Pick<FormValues, "modelKey" | "capability" | "protocol" | "capabilityConfig">) => {
         setTesting(true);
         try {
             const result = await testAdminChannelModel(channel.id, {
@@ -147,6 +146,25 @@ export function ChannelModelManager({ channel, onClose, onChanged }: { channel: 
         } finally {
             setTesting(false);
         }
+    };
+
+    const requestModelTest = async () => {
+        let values: Pick<FormValues, "modelKey" | "capability" | "protocol" | "capabilityConfig">;
+        try {
+            values = await form.validateFields(["modelKey", "capability", "protocol", ...(modelCapability === "image" || modelCapability === "video" ? ["capabilityConfig"] : [])]);
+        } catch {
+            return;
+        }
+        const videoTest = values.capability === "video";
+        modal.confirm({
+            title: videoTest ? "确认测试视频模型" : "确认测试模型",
+            okText: "确认发起测试",
+            cancelText: "取消",
+            content: videoTest
+                ? "将向上游创建默认测试视频任务（通常为 6 秒、720P；即梦官方协议为 5 秒），可能立即产生供应商费用。该测试不会创建用户任务或积分订单。"
+                : "将向上游发起真实测试请求，可能产生供应商费用。该测试不会创建用户任务或积分订单。",
+            onOk: () => testModel(values),
+        });
     };
 
     const remove = async (item: ChannelModel) => {
@@ -281,10 +299,10 @@ export function ChannelModelManager({ channel, onClose, onChanged }: { channel: 
                         <Switch />
                     </Form.Item>
                     <div className="mb-2 text-xs text-foreground/45">
-                        测试会向上游发起真实请求并可能产生供应商费用{modelCapability === "video" ? "，视频测试可能需要数分钟" : ""}。
+                        测试会向上游发起真实请求；确认后才会执行，并可能产生供应商费用{modelCapability === "video" ? "，视频测试可能需要数分钟" : ""}。
                     </div>
                     <div className="grid grid-cols-2 gap-2">
-                        <Button icon={<FlaskConical className="size-4" />} loading={testing} disabled={saving} onClick={() => void testModel()}>测试模型</Button>
+                        <Button icon={<FlaskConical className="size-4" />} loading={testing} disabled={saving} onClick={() => void requestModelTest()}>测试模型</Button>
                         <Button type="primary" loading={saving} disabled={testing} onClick={() => void save()}>{editing ? "保存修改" : "添加模型"}</Button>
                     </div>
                 </Form>
