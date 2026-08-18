@@ -56,10 +56,10 @@ API Key 不在页面显示。当前画布没有真实 `canvas_video` Result 节�
 - 草稿保存显示 `UNCERTAIN`；固定锚点坐标漂移显示 `FAIL`，原因是“连续性锁定锚点位置、朝向或对象发生漂移”；清除漂移后恢复 `PASS`。
 - 记录权威来源冲突并保存后显示 `NEEDS_YOU`；移除冲突并保存为可生成版本后恢复 `PASS`。
 - 两个登录页面并发编辑同一场景时，旧页面提交被 `409` 拒绝并提示“服务器已有新版本”；使用刷新动作载入最新版本后显示 `v14 · ready`，未覆盖较新的保存。
+- 场景 Gate 更新后打开旧 Generation Request，执行面板阻止提交并提示“Prompt Pack 锁定的空间版本已不是当前 PASS 场景资产版本，请重新编译 Prompt Pack”；提交按钮禁用、执行历史为空，没有创建 Task、预留积分或调用 Provider。
 
 仍待用户验收：
 
-- 场景 Gate 更新后尝试提交旧任务草稿，确认不创建 Task、不预留积分、不调用 Provider；
 - 用真实成片和真实资产验证缺视角、缺证据以及门窗漂移的业务结果（当前自动检查仍是结构合同，不是视觉检测）。
 
 完整合同见 `docs/production-canvas/scene-spatial-contract.md`。
