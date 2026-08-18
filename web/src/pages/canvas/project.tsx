@@ -25,6 +25,7 @@ import { CanvasAssetTray } from "@/components/canvas/canvas-asset-tray";
 import { CanvasProjectSidebar } from "@/components/canvas/canvas-project-sidebar";
 import { FilmInspector } from "@/film/inspector/film-inspector";
 import { ProductionShotStrip } from "@/film/panels/production-shot-strip";
+import { ProductionFlowBar } from "@/film/panels/production-flow-bar";
 import { buildProductionShellModel, EMPTY_PRODUCTION_NAVIGATION_COUNTS, type ProductionNavigationKey } from "@/film/panels/production-shell-model";
 import { FilmNodeCard } from "@/film/nodes/film-node-card";
 import { describeFilmConnection } from "@/film/domain/edge-contract";
@@ -1845,6 +1846,8 @@ function InfiniteCanvasPage() {
                     {!focusMode && shortDramaGuide ? (
                         <CanvasShortDramaGuide progress={shortDramaGuide.progress} collapsed={shortDramaGuide.collapsed} onToggle={shortDramaGuide.onToggle} onSkip={skipShortDramaGuide} onStepClick={activateShortDramaStep} />
                     ) : null}
+
+                    {!focusMode && productionShell ? <ProductionFlowBar model={productionShell} activeSection={productionSection} onNavigate={handleProductionNavigate} /> : null}
 
                     <CanvasShareModal projectId={projectId} open={shareModalOpen} onClose={() => setShareModalOpen(false)} beforeCreate={saveCanvasProject} />
 
