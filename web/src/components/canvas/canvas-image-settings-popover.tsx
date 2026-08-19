@@ -3,8 +3,9 @@ import { createPortal } from "react-dom";
 import { Settings2 } from "lucide-react";
 import { Button } from "antd";
 
-import { ImageSettingsPanel, imageQualityLabel, imageSizeLabel } from "@/components/image-settings-panel";
+import { ImageSettingsPanel } from "@/components/image-settings-panel";
 import { canvasThemes } from "@/lib/canvas-theme";
+import { imageAspectForSize, imageResolutionForValue, imageResolutionLabel, imageResolutionOptions, imageSizeLabel } from "@/lib/image-generation-options";
 import { modelCapabilityConfigFor, normalizeImageValue } from "@/lib/model-capabilities";
 import { useThemeStore } from "@/stores/use-theme-store";
 import type { AiConfig } from "@/stores/use-config-store";
@@ -29,13 +30,14 @@ export function CanvasImageSettingsPopover({ config, onConfigChange, onOpenChang
     const [buttonRect, setButtonRect] = useState<DOMRect | null>(null);
     const profile = modelCapabilityConfigFor(config, config.model || config.imageModel).image!;
     const normalized = normalizeImageValue(profile, config);
+    const resolutionOptions = imageResolutionOptions(profile, imageAspectForSize(normalized.size));
+    const resolution = resolutionOptions.length ? imageResolutionForValue(normalized) : undefined;
     const summaryParts = [
         ...(profile.size.parameter !== "none" ? [imageSizeLabel(normalized.size)] : []),
-        ...(profile.quality.supported ? [imageQualityLabel(normalized.quality)] : []),
-        ...(showCount && profile.maxOutputs > 1 ? [`${normalized.count} 张`] : []),
+        ...(resolution ? [imageResolutionLabel(resolution)] : []),
         ...(profile.transparentBackground.supported && normalized.transparentBackground === "true" ? ["透明"] : []),
     ];
-    const summary = summaryParts.join(" · ");
+    const summary = summaryParts.join(" / ");
     const hasSettings = profile.size.parameter !== "none" || profile.quality.supported || profile.transparentBackground.supported || (showCount && profile.maxOutputs > 1);
     const updateOpen = (nextOpen: boolean) => {
         setOpen(nextOpen);
@@ -72,7 +74,17 @@ export function CanvasImageSettingsPopover({ config, onConfigChange, onOpenChang
     return (
         <>
             <span ref={buttonRef} className="inline-flex min-w-0">
-                <Button size="small" type="text" className={`canvas-generation-settings-trigger ${buttonClassName || "!h-8 !max-w-[180px] !justify-start !rounded-full !px-2.5"}`} style={{ background: theme.node.fill, color: theme.node.text }} icon={<Settings2 className="size-3.5" />} aria-expanded={open} aria-label={`图像设置：${summary}`} title={`图像设置 · ${summary}`} onClick={() => updateOpen(!open)}>
+                <Button
+                    size="small"
+                    type="text"
+                    className={`canvas-generation-settings-trigger ${buttonClassName || "!h-8 !max-w-[180px] !justify-start !rounded-full !px-2.5"}`}
+                    style={{ background: theme.node.fill, color: theme.node.text }}
+                    icon={<Settings2 className="size-3.5" />}
+                    aria-expanded={open}
+                    aria-label={`图像设置：${summary}`}
+                    title={`图像设置 · ${summary}`}
+                    onClick={() => updateOpen(!open)}
+                >
                     <span className="truncate">{summary}</span>
                 </Button>
             </span>

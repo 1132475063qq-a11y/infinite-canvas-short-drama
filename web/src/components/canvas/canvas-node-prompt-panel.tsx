@@ -208,22 +208,22 @@ export function CanvasNodePromptPanel({ node, isRunning, onPromptChange, onConfi
                     />
                 </div>
                 <div className="ml-auto flex min-w-0 shrink-0 items-center gap-1">
-                    {mode === "image" ? (
+                    {!expanded && mode === "image" ? (
                         <CanvasImageSettingsPopover
                             config={config}
-                            placement={expanded ? "topRight" : "topLeft"}
+                            placement="topLeft"
                             buttonClassName="!h-7 !w-[146px] !justify-start !rounded-full !border-0 !px-2.5 !text-[var(--fs-tiny)] !font-normal !shadow-none [&>span]:min-w-0 [&_.lucide]:!size-3"
                             onConfigChange={(key, value) => onConfigChange(node.id, key === "count" ? { count: Number(value) || 1 } : { [key]: value })}
                             onMissingConfig={() => navigateToSettings({ continueCreation: true })}
-                            onOpenChange={expanded ? undefined : onImageSettingsOpenChange}
+                            onOpenChange={onImageSettingsOpenChange}
                         />
-                    ) : mode === "video" ? (
+                    ) : !expanded && mode === "video" ? (
                         <CanvasVideoSettingsPopover
                             config={config}
                             buttonClassName="!h-7 !w-[144px] !justify-start !rounded-full !border-0 !px-2.5 !text-[var(--fs-tiny)] !font-normal !shadow-none [&>span]:min-w-0 [&_.lucide]:!size-3"
                             onConfigChange={(key, value) => onConfigChange(node.id, videoConfigPatch(key, value))}
                         />
-                    ) : mode === "audio" ? (
+                    ) : !expanded && mode === "audio" ? (
                         <CanvasAudioSettingsPopover
                             config={config}
                             buttonClassName="!h-7 !w-[146px] !justify-start !rounded-full !border-0 !px-2.5 !text-[var(--fs-tiny)] !font-normal !shadow-none [&>span]:min-w-0 [&_.lucide]:!size-3"
