@@ -8,28 +8,35 @@ export type ImageAspectOption = {
     icon: "square" | "landscape" | "portrait";
 };
 
-export type ImageResolutionOption = {
+export type ImageResolutionOption = { value: string; label: string; resolution: string; source: "size"; size: string } | { value: string; label: string; resolution: string; source: "quality"; quality: string };
+
+export type ImageQualityOption = {
     value: string;
     label: string;
 };
 
-// 界面先选比例，再通过清晰度选择模型对应的像素尺寸。
+// 比例和清晰度是两个独立概念：固定像素尺寸写入 size，明确的 K 档模型写入 quality。
 export const imageAspectOptions: ImageAspectOption[] = [
     { value: "1:1", label: "1:1", width: 1024, height: 1024, icon: "square" },
     { value: "4:3", label: "4:3", width: 1360, height: 1024, icon: "landscape" },
     { value: "3:4", label: "3:4", width: 1024, height: 1360, icon: "portrait" },
     { value: "16:9", label: "16:9", width: 1824, height: 1024, icon: "landscape" },
+    { value: "21:9", label: "21:9", width: 2352, height: 1008, icon: "landscape" },
     { value: "9:16", label: "9:16", width: 1024, height: 1824, icon: "portrait" },
     { value: "3:2", label: "3:2", width: 1536, height: 1024, icon: "landscape" },
     { value: "2:3", label: "2:3", width: 1024, height: 1536, icon: "portrait" },
 ];
 
-const qualityResolutionAliases: Record<string, string> = {
-    low: "1k",
-    standard: "1k",
-    medium: "2k",
-    hd: "2k",
-    high: "4k",
+const qualityLabels: Record<string, string> = {
+    auto: "自动",
+    low: "低",
+    medium: "中",
+    high: "高",
+    standard: "标准",
+    hd: "高清",
+    "1k": "1K",
+    "2k": "2K",
+    "4k": "4K",
 };
 
 export function imageAspectAllowed(profile: ImageCapabilityConfig, aspect: ImageAspectOption) {
@@ -58,24 +65,30 @@ export function imageSizeForAspect(profile: ImageCapabilityConfig, aspect: Image
 }
 
 export function imageResolutionOptions(profile: ImageCapabilityConfig, aspect?: ImageAspectOption): ImageResolutionOption[] {
-    const resolutions = new Set<string>();
-    const sizeValues = aspect ? profile.size.values.filter((value) => matchesAspect(aspect, value)) : profile.size.values;
+    const sizeOptions = imageResolutionOptionsForSize(profile, aspect);
+    const qualityOptions = imageResolutionOptionsForQuality(profile);
 
-    if (aspect && supportsBaseAspect(profile, aspect) && profile.quality.supported) resolutions.add("1k");
-    sizeValues.forEach((value) => {
-        const resolution = imageResolutionFromSize(value);
-        if (resolution) resolutions.add(resolution);
-    });
-    if (profile.quality.supported) {
-        profile.quality.values.forEach((value) => {
-            const resolution = imageResolutionFromQuality(value);
-            if (resolution) resolutions.add(resolution);
-        });
-    }
+    // ratio + quality(1k/2k) 的模型必须使用 quality；固定像素模型则优先使用 size。
+    if (profile.size.parameter === "aspect_ratio" && qualityOptions.length) return qualityOptions;
+    if (profile.size.parameter === "aspect_ratio") return [];
+    if (sizeOptions.length) return sizeOptions;
+    return qualityOptions;
+}
 
-    return Array.from(resolutions)
-        .sort(compareResolutions)
-        .map((value) => ({ value, label: imageResolutionLabel(value) }));
+export function imageResolutionOptionForValue(profile: ImageCapabilityConfig, value: { size?: string; quality?: string }, aspect = imageAspectForSize(value.size)) {
+    const options = imageResolutionOptions(profile, aspect);
+    const sizeMatch = options.find((option) => option.source === "size" && normalizeSizeValue(option.size) === normalizeSizeValue(value.size));
+    if (sizeMatch) return sizeMatch;
+    return options.find((option) => option.source === "quality" && normalizeQualityValue(option.quality) === normalizeQualityValue(value.quality));
+}
+
+export function imageResolutionConfigChange(option: ImageResolutionOption) {
+    return option.source === "size" ? { key: "size" as const, value: option.size } : { key: "quality" as const, value: option.quality };
+}
+
+export function imageQualityOptions(profile: ImageCapabilityConfig): ImageQualityOption[] {
+    if (!profile.quality.supported) return [];
+    return profile.quality.values.filter((value) => !/^\d+k$/i.test(value.trim())).map((value) => ({ value, label: imageQualityLabel(value) }));
 }
 
 export function imageResolutionForValue(value: { size?: string; quality?: string }) {
@@ -90,11 +103,7 @@ export function imageQualityForResolution(profile: ImageCapabilityConfig, resolu
     if (!profile.quality.supported) return undefined;
     const normalizedResolution = normalizeResolution(resolution);
     if (!normalizedResolution) return undefined;
-    const directMatch = profile.quality.values.find((value) => normalizeQualityValue(value) === normalizedResolution);
-    if (directMatch) return directMatch;
-    const aliasMatch = profile.quality.values.find((value) => imageResolutionFromQuality(value) === normalizedResolution);
-    if (aliasMatch) return aliasMatch;
-    return profile.quality.values.find((value) => normalizeQualityValue(value) === "auto");
+    return profile.quality.values.find((value) => imageResolutionFromQuality(value) === normalizedResolution);
 }
 
 export function imageResolutionLabel(value: string | undefined) {
@@ -103,16 +112,49 @@ export function imageResolutionLabel(value: string | undefined) {
     return normalized.toUpperCase();
 }
 
+export function imageQualityLabel(value: string | undefined) {
+    const normalized = normalizeQualityValue(value);
+    return qualityLabels[normalized] || value || "默认";
+}
+
 export function imageSizeLabel(value: string | undefined) {
     const normalized = normalizeSizeValue(value);
     if (!normalized || normalized === "auto") return "自动";
     return imageAspectForSize(normalized)?.label || value || "自动";
 }
 
-function supportsBaseAspect(profile: ImageCapabilityConfig, aspect: ImageAspectOption) {
-    if (profile.size.parameter === "none") return false;
-    if (profile.size.allowCustom) return true;
-    return profile.size.values.some((value) => normalizeSizeValue(value) === normalizeSizeValue(aspect.value));
+function imageResolutionOptionsForSize(profile: ImageCapabilityConfig, aspect?: ImageAspectOption): ImageResolutionOption[] {
+    if (profile.size.parameter === "none") return [];
+    const candidates = aspect ? profile.size.values.filter((value) => matchesAspect(aspect, value)) : profile.size.values;
+    const options = new Map<string, ImageResolutionOption>();
+
+    candidates.forEach((size) => {
+        const resolution = imageResolutionFromSize(size);
+        if (!resolution) return;
+        options.set(resolution, { value: `size:${normalizeSizeValue(size)}`, label: imageResolutionLabel(resolution), resolution, source: "size", size });
+    });
+
+    const baseSize = aspect && candidates.find((size) => normalizeSizeValue(size) === normalizeSizeValue(aspect.value));
+    if (baseSize && !options.has("1k")) {
+        options.set("1k", { value: `size:${normalizeSizeValue(baseSize)}`, label: imageResolutionLabel("1k"), resolution: "1k", source: "size", size: baseSize });
+    }
+
+    return sortResolutionOptions([...options.values()]);
+}
+
+function imageResolutionOptionsForQuality(profile: ImageCapabilityConfig): ImageResolutionOption[] {
+    if (!profile.quality.supported) return [];
+    const options = new Map<string, ImageResolutionOption>();
+    profile.quality.values.forEach((quality) => {
+        const normalized = normalizeQualityValue(quality);
+        if (!/^\d+k$/.test(normalized)) return;
+        options.set(normalized, { value: `quality:${normalized}`, label: imageResolutionLabel(normalized), resolution: normalized, source: "quality", quality });
+    });
+    return sortResolutionOptions([...options.values()]);
+}
+
+function sortResolutionOptions(options: ImageResolutionOption[]) {
+    return options.sort((left, right) => compareResolutions(left.resolution, right.resolution));
 }
 
 function matchesAspect(aspect: ImageAspectOption, value: string) {
@@ -148,8 +190,7 @@ function imageResolutionFromSize(value: string | undefined) {
 
 function imageResolutionFromQuality(value: string | undefined) {
     const normalized = normalizeQualityValue(value);
-    if (/^\d+k$/.test(normalized)) return normalized;
-    return qualityResolutionAliases[normalized];
+    return /^\d+k$/.test(normalized) ? normalized : undefined;
 }
 
 function compareResolutions(left: string, right: string) {

@@ -6,12 +6,15 @@ import {
     imageAspectAllowed,
     imageAspectForSize,
     imageAspectOptions,
-    imageQualityForResolution,
-    imageResolutionForValue,
+    imageQualityLabel as formatImageQualityLabel,
+    imageQualityOptions,
+    imageResolutionConfigChange,
+    imageResolutionOptionForValue,
     imageResolutionOptions,
     imageSizeForAspect,
     imageSizeLabel as formatImageSizeLabel,
     type ImageAspectOption,
+    type ImageResolutionOption,
 } from "@/lib/image-generation-options";
 import { modelCapabilityConfigFor, normalizeImageValue } from "@/lib/model-capabilities";
 import { type AiConfig } from "@/stores/use-config-store";
@@ -40,20 +43,20 @@ export function ImageSettingsPanel({ config, onConfigChange, theme, showTitle = 
     const activeSize = normalized.size;
     const availableAspects = imageAspectOptions.filter((item) => imageAspectAllowed(profile, item));
     const selectedAspect = imageAspectForSize(activeSize) || availableAspects.find((item) => imageSizeForAspect(profile, item) === activeSize) || availableAspects[0];
-    const selectedResolution = imageResolutionForValue({ size: activeSize, quality });
+    const selectedResolution = imageResolutionOptionForValue(profile, normalized, selectedAspect);
     const resolutionOptions = imageResolutionOptions(profile, selectedAspect);
+    const qualityOptions = imageQualityOptions(profile);
     const dimensions = readSizeDimensions(activeSize, selectedAspect || imageAspectOptions[0]);
     const selectAspect = (option: ImageAspectOption) => {
         const nextResolutionOptions = imageResolutionOptions(profile, option);
-        const nextResolution = selectedResolution && nextResolutionOptions.some((item) => item.value === selectedResolution) ? selectedResolution : nextResolutionOptions[0]?.value;
-        onConfigChange("size", imageSizeForAspect(profile, option, nextResolution));
-        const nextQuality = nextResolution ? imageQualityForResolution(profile, nextResolution) : undefined;
-        if (nextQuality && nextQuality !== quality) onConfigChange("quality", nextQuality);
+        const nextResolution = selectedResolution ? nextResolutionOptions.find((item) => item.source === selectedResolution.source && item.resolution === selectedResolution.resolution) || nextResolutionOptions[0] : undefined;
+        const nextSize = nextResolution?.source === "size" ? nextResolution.size : imageSizeForAspect(profile, option);
+        if (nextSize !== activeSize) onConfigChange("size", nextSize);
+        if (nextResolution?.source === "quality" && nextResolution.quality !== quality) onConfigChange("quality", nextResolution.quality);
     };
-    const selectResolution = (resolution: string) => {
-        if (selectedAspect) onConfigChange("size", imageSizeForAspect(profile, selectedAspect, resolution));
-        const nextQuality = imageQualityForResolution(profile, resolution);
-        if (nextQuality) onConfigChange("quality", nextQuality);
+    const selectResolution = (option: ImageResolutionOption) => {
+        const change = imageResolutionConfigChange(option);
+        onConfigChange(change.key, change.value);
     };
     const updateDimension = (key: "width" | "height", value: number | null) => {
         const next = Math.max(1, Math.floor(value || dimensions[key] || 1024));
@@ -99,7 +102,19 @@ export function ImageSettingsPanel({ config, onConfigChange, theme, showTitle = 
                         <SettingTitle color={theme.node.muted}>清晰度</SettingTitle>
                         <div className={`grid gap-1.5 ${resolutionOptions.length <= 2 ? "grid-cols-2" : "grid-cols-3"}`}>
                             {resolutionOptions.map((item) => (
-                                <OptionPill key={item.value} selected={selectedResolution === item.value} theme={theme} onClick={() => selectResolution(item.value)}>
+                                <OptionPill key={item.value} selected={selectedResolution?.value === item.value} theme={theme} onClick={() => selectResolution(item)}>
+                                    {item.label}
+                                </OptionPill>
+                            ))}
+                        </div>
+                    </div>
+                ) : null}
+                {qualityOptions.length > 1 ? (
+                    <div className="space-y-2">
+                        <SettingTitle color={theme.node.muted}>质量</SettingTitle>
+                        <div className={`grid gap-1.5 ${qualityOptions.length <= 2 ? "grid-cols-2" : "grid-cols-4"}`}>
+                            {qualityOptions.map((item) => (
+                                <OptionPill key={item.value} selected={quality === item.value} theme={theme} onClick={() => onConfigChange("quality", item.value)}>
                                     {item.label}
                                 </OptionPill>
                             ))}
@@ -172,7 +187,7 @@ export function ImageSettingsTheme({ theme, children }: { theme: CanvasTheme; ch
 
 // 保留原有导出，供画布外的设置入口继续复用。
 export function imageQualityLabel(value: string) {
-    return ({ auto: "自动", high: "高", medium: "中", low: "低", "1k": "1K", "2k": "2K", "4k": "4K" } as Record<string, string>)[value] || value || "默认";
+    return formatImageQualityLabel(value);
 }
 
 export function imageSizeLabel(size: string) {

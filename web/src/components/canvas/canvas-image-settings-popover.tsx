@@ -5,7 +5,7 @@ import { Button } from "antd";
 
 import { ImageSettingsPanel } from "@/components/image-settings-panel";
 import { canvasThemes } from "@/lib/canvas-theme";
-import { imageAspectForSize, imageResolutionForValue, imageResolutionLabel, imageResolutionOptions, imageSizeLabel } from "@/lib/image-generation-options";
+import { imageAspectForSize, imageQualityOptions, imageResolutionOptionForValue, imageSizeLabel } from "@/lib/image-generation-options";
 import { modelCapabilityConfigFor, normalizeImageValue } from "@/lib/model-capabilities";
 import { useThemeStore } from "@/stores/use-theme-store";
 import type { AiConfig } from "@/stores/use-config-store";
@@ -30,11 +30,12 @@ export function CanvasImageSettingsPopover({ config, onConfigChange, onOpenChang
     const [buttonRect, setButtonRect] = useState<DOMRect | null>(null);
     const profile = modelCapabilityConfigFor(config, config.model || config.imageModel).image!;
     const normalized = normalizeImageValue(profile, config);
-    const resolutionOptions = imageResolutionOptions(profile, imageAspectForSize(normalized.size));
-    const resolution = resolutionOptions.length ? imageResolutionForValue(normalized) : undefined;
+    const resolution = imageResolutionOptionForValue(profile, normalized, imageAspectForSize(normalized.size));
+    const quality = imageQualityOptions(profile).find((option) => option.value === normalized.quality);
     const summaryParts = [
         ...(profile.size.parameter !== "none" ? [imageSizeLabel(normalized.size)] : []),
-        ...(resolution ? [imageResolutionLabel(resolution)] : []),
+        ...(resolution ? [resolution.label] : []),
+        ...(quality && quality.value !== "auto" ? [quality.label] : []),
         ...(profile.transparentBackground.supported && normalized.transparentBackground === "true" ? ["透明"] : []),
     ];
     const summary = summaryParts.join(" / ");
